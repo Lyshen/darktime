@@ -1,5 +1,6 @@
 .build/
 dist/
 node_modules/
+assets/DarktimeAppIcon.iconset/
 .DS_Store
 npm-debug.log*

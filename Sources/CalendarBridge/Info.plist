@@ -12,6 +12,8 @@
     <string>Darktime Calendar Bridge</string>
     <key>CFBundleDisplayName</key>
     <string>Darktime Calendar Bridge</string>
+    <key>CFBundleIconFile</key>
+    <string>DarktimeAppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

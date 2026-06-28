@@ -29,6 +29,8 @@ This builds:
 
 - `.build/release/calendar-bridge`
 - `.build/DarktimeCalendarBridge.app`
+- `assets/darktime-logo.png`
+- `assets/DarktimeAppIcon.icns`
 - `dist/mac/Darktime Calendar Bridge.app`
 - `dist/mac/Darktime-Calendar-Bridge-mac.zip`
 - `dist/mcp-server.js`
