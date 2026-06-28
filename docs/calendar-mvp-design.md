@@ -85,7 +85,7 @@ Apple Calendar access is controlled by macOS privacy/TCC:
 
 - The bridge embeds calendar usage strings in its executable Info.plist.
 - The release build is wrapped in `DarktimeCalendarBridge.app` because macOS Calendar/TCC permission is bound to the signed app identity.
-- Build artifacts are emitted to `dist/mac/Darktime Calendar Bridge.app` and `dist/mac/Darktime-Calendar-Bridge-mac.zip` for local install testing.
+- Build artifacts are emitted to `dist/mac/Darktime Calendar Bridge.app`, `dist/mac/Darktime-Calendar-Bridge-mac.zip`, and `dist/mac/Darktime-Calendar-Bridge-mac.dmg` for local install testing.
 - Brand assets live in `assets/`; the SVG logo is rendered to a PNG preview and a macOS `.icns` app icon during build.
 - On macOS 14+, the bridge requests full calendar access with EventKit's full-access API.
 - The user grants or denies access through the system permission prompt.

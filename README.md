@@ -35,6 +35,31 @@ This builds:
 - `dist/mac/Darktime-Calendar-Bridge-mac.zip`
 - `dist/mcp-server.js`
 
+Build a local DMG:
+
+```bash
+npm run build:dmg
+```
+
+This creates:
+
+- `dist/mac/Darktime-Calendar-Bridge-mac.dmg`
+
+## GitHub Release Build
+
+The repository includes a GitHub Actions workflow at `.github/workflows/build-mac.yml`.
+
+- Push to `main` or `mvp`: build the macOS app and upload `.app`, `.zip`, and `.dmg` as workflow artifacts.
+- Run manually from Actions: build the same downloadable artifacts.
+- Push a version tag like `v0.1.0`: build the app, create/update the GitHub Release, and attach the `.dmg` and `.zip`.
+
+Release command:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## Install Test Build
 
 Build the app artifact:
