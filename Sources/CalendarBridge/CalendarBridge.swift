@@ -107,14 +107,15 @@ struct FreeSlotSnapshot: Encodable {
 struct CalendarBridge {
     @MainActor
     static func main() async {
-        guard CommandLine.arguments.count >= 2 else {
+        let launchArguments = normalizedLaunchArguments(CommandLine.arguments)
+        guard launchArguments.count >= 2 else {
             launchCalendarAppUI()
             return
         }
 
         var outputPath: String?
         do {
-            let options = try parseOptions(CommandLine.arguments)
+            let options = try parseOptions(launchArguments)
             outputPath = options.value("output")
             let result = try await run(options: options)
             printEncoded(result, outputPath: outputPath)
@@ -123,6 +124,14 @@ struct CalendarBridge {
             Foundation.exit(1)
         }
     }
+}
+
+func normalizedLaunchArguments(_ args: [String]) -> [String] {
+    guard let executable = args.first else {
+        return args
+    }
+
+    return [executable] + args.dropFirst().filter { !$0.hasPrefix("-psn_") }
 }
 
 @MainActor
@@ -253,7 +262,7 @@ func run(options: Options) async throws -> AnyEncodable {
             durationMinutes: durationMinutes
         ))
     default:
-        throw BridgeError.invalidArguments("Unknown command '\(options.command)'. Run 'calendar-bridge help'.")
+        throw BridgeError.invalidArguments("Unknown command '\(options.command)'. Run 'darktime help'.")
     }
 }
 
@@ -263,7 +272,7 @@ func success<T: Encodable>(_ data: T) -> AnyEncodable {
 
 func parseOptions(_ args: [String]) throws -> Options {
     guard args.count >= 2 else {
-        throw BridgeError.invalidArguments("Missing command. Run 'calendar-bridge help'.")
+        throw BridgeError.invalidArguments("Missing command. Run 'darktime help'.")
     }
 
     let command = args[1]
@@ -327,7 +336,7 @@ func ensureFullCalendarAccess() throws {
     let status = EKEventStore.authorizationStatus(for: .event)
     guard hasFullCalendarAccess(status) else {
         throw BridgeError.calendarAccessRequired(
-            "Calendar access is '\(statusName(status))'. Run 'calendar-bridge request-access' and grant full calendar access."
+            "Calendar access is '\(statusName(status))'. Run 'darktime request-access' and grant full calendar access."
         )
     }
 }

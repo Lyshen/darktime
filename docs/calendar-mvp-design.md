@@ -1,4 +1,4 @@
-# Darktime Calendar MVP Design
+# Darktime MVP Design
 
 ## Goal
 
@@ -26,7 +26,7 @@ For MVP, Apple Calendar is the fastest integration path because it can already a
 Apple Calendar.app / macOS calendar accounts
                   |
                   v
-Swift CalendarBridge executable
+Darktime macOS app
   - EventKit authorization
   - Calendar/event read operations
   - Event create/update/delete operations
@@ -44,7 +44,7 @@ Codex / Claude Code / other MCP clients
 
 ## MVP Tool Surface
 
-The Swift bridge exposes command-line operations that return JSON:
+Darktime exposes command-line operations that return JSON:
 
 - `authorization-status`
 - `request-access`
@@ -83,15 +83,15 @@ This keeps the native app focused on trust, setup, and provider management while
 
 Apple Calendar access is controlled by macOS privacy/TCC:
 
-- The bridge embeds calendar usage strings in its executable Info.plist.
-- The release build is wrapped in `DarktimeCalendarBridge.app` because macOS Calendar/TCC permission is bound to the signed app identity.
-- Build artifacts are emitted to `dist/mac/Darktime Calendar Bridge.app`, `dist/mac/Darktime-Calendar-Bridge-mac.zip`, and `dist/mac/Darktime-Calendar-Bridge-mac.dmg` for local install testing.
+- Darktime embeds calendar usage strings in its executable Info.plist.
+- The release build is wrapped in `Darktime.app` because macOS Calendar/TCC permission is bound to the signed app identity.
+- Build artifacts are emitted to `dist/mac/Darktime.app`, `dist/mac/Darktime-mac.zip`, and `dist/mac/Darktime-mac.dmg` for local install testing.
 - Brand assets live in `assets/`; the SVG logo is rendered to a PNG preview and a macOS `.icns` app icon during build.
-- On macOS 14+, the bridge requests full calendar access with EventKit's full-access API.
+- On macOS 14+, Darktime requests full calendar access with EventKit's full-access API.
 - The user grants or denies access through the system permission prompt.
 - If access is denied or not yet granted, read/write operations fail with an actionable error.
 
-The MCP server does not store Apple Calendar credentials. It only launches the local bridge.
+The MCP server does not store Apple Calendar credentials. It only launches Darktime locally.
 
 ## Normalized Event Model
 
@@ -127,7 +127,7 @@ Provider-specific connectors should live behind a local app/service authorizatio
 
 ## First-Version Limitations
 
-- The first bridge is a local helper executable, not a polished menu bar app.
+- The first app is a local control console, not a polished menu bar app.
 - Recurring events are listed as expanded EventKit occurrences, but update/delete defaults to `.thisEvent`.
 - Attendee management and meeting-room fields are not part of MVP.
 - Provider-specific meeting links and enterprise policy behavior may require direct provider APIs later.
@@ -144,7 +144,7 @@ Required local tools:
 
 ## Run Flow
 
-Build the bridge:
+Build Darktime:
 
 ```bash
 npm run build:all
@@ -160,14 +160,14 @@ npm run build
 Check authorization:
 
 ```bash
-open -W .build/DarktimeCalendarBridge.app --args authorization-status --output /tmp/darktime-auth.json
+open -W .build/Darktime.app --args authorization-status --output /tmp/darktime-auth.json
 cat /tmp/darktime-auth.json
 ```
 
 Request calendar access:
 
 ```bash
-open -W .build/DarktimeCalendarBridge.app --args request-access --output /tmp/darktime-request.json
+open -W .build/Darktime.app --args request-access --output /tmp/darktime-request.json
 cat /tmp/darktime-request.json
 ```
 

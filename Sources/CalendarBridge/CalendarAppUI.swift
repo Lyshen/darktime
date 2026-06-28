@@ -27,7 +27,7 @@ private func configureApplicationMenu() {
     let appMenu = NSMenu()
 
     appMenu.addItem(
-        withTitle: "Quit Darktime Calendar Bridge",
+        withTitle: "Quit Darktime",
         action: #selector(NSApplication.terminate(_:)),
         keyEquivalent: "q"
     )
@@ -68,7 +68,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Darktime Calendar Bridge"
+        window.title = "Darktime"
         window.minSize = NSSize(width: 620, height: 480)
         window.center()
 
@@ -106,9 +106,9 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let title = label("Darktime Calendar Bridge", size: 24, weight: .semibold)
+        let title = label("Darktime", size: 24, weight: .semibold)
         let subtitle = label(
-            "Local Calendar access for Codex, Claude Code, and other MCP clients.",
+            "Your local time layer for Codex, Claude Code, and other agents.",
             size: 13,
             color: .secondaryLabelColor
         )
@@ -123,7 +123,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         let stack = sectionStack(in: box)
 
         let titleRow = horizontalStack(spacing: 10)
-        let title = label("Calendar Access", size: 15, weight: .semibold)
+        let title = label("Access", size: 15, weight: .semibold)
         accessStatusLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
         titleRow.addArrangedSubview(title)
         titleRow.addArrangedSubview(makeSpacer())
@@ -134,6 +134,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         accessDetailLabel.lineBreakMode = .byWordWrapping
         accessDetailLabel.maximumNumberOfLines = 2
 
+        requestAccessButton.title = "Connect Calendar"
         requestAccessButton.target = self
         requestAccessButton.action = #selector(requestAccess)
         requestAccessButton.bezelStyle = .rounded
@@ -157,7 +158,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         let box = makeSectionBox()
         let stack = sectionStack(in: box)
 
-        let title = label("Visible Calendars", size: 15, weight: .semibold)
+        let title = label("Calendars", size: 15, weight: .semibold)
 
         preferredCalendarLabel.font = NSFont.systemFont(ofSize: 12)
         preferredCalendarLabel.textColor = .secondaryLabelColor
@@ -188,7 +189,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         let box = makeSectionBox()
         let stack = sectionStack(in: box)
 
-        let title = label("MCP Connection", size: 15, weight: .semibold)
+        let title = label("Agent Access", size: 15, weight: .semibold)
         mcpHintLabel.stringValue = """
         MCP command: \(mcpCommand())
         The server will find this app in dist/mac, ~/Applications, or /Applications.
@@ -275,12 +276,12 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         requestAccessButton.isEnabled = !canReadWrite
 
         if canReadWrite {
-            accessDetailLabel.stringValue = "Calendar read/write is available to the local bridge app."
+            accessDetailLabel.stringValue = "Calendar read/write is available to Darktime."
             refreshCalendars()
         } else {
             accessDetailLabel.stringValue = "Grant full calendar access before MCP clients can read or write events."
             preferredCalendarLabel.stringValue = "No write target is available yet."
-            calendarsTextView.string = "Calendar access is not granted."
+            calendarsTextView.string = "Access is not granted yet."
         }
     }
 

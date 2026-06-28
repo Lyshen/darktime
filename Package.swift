@@ -8,7 +8,7 @@ let package = Package(
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "calendar-bridge", targets: ["CalendarBridge"])
+        .executable(name: "darktime", targets: ["CalendarBridge"])
     ],
     targets: [
         .executableTarget(

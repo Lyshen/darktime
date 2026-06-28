@@ -1,10 +1,10 @@
-# darktime
+# Darktime
 
-Darktime is a local calendar gateway MVP for giving local coding agents controlled access to the user's calendar.
+Darktime is a local time layer for giving coding agents controlled access to the user's calendar.
 
 Current MVP:
 
-- Apple Calendar read/write through a Swift EventKit bridge.
+- Apple Calendar read/write through a native Swift EventKit integration.
 - Local MCP server for Codex, Claude Code, and other MCP clients.
 - Write operations require explicit `confirm: true` at the MCP layer.
 
@@ -27,12 +27,12 @@ npm run build:all
 
 This builds:
 
-- `.build/release/calendar-bridge`
-- `.build/DarktimeCalendarBridge.app`
+- `.build/release/darktime`
+- `.build/Darktime.app`
 - `assets/darktime-logo.png`
 - `assets/DarktimeAppIcon.icns`
-- `dist/mac/Darktime Calendar Bridge.app`
-- `dist/mac/Darktime-Calendar-Bridge-mac.zip`
+- `dist/mac/Darktime.app`
+- `dist/mac/Darktime-mac.zip`
 - `dist/mcp-server.js`
 
 Build a local DMG:
@@ -43,7 +43,7 @@ npm run build:dmg
 
 This creates:
 
-- `dist/mac/Darktime-Calendar-Bridge-mac.dmg`
+- `dist/mac/Darktime-mac.dmg`
 
 ## GitHub Release Build
 
@@ -71,8 +71,8 @@ npm run build:all
 Install it for local testing:
 
 ```bash
-cp -R "dist/mac/Darktime Calendar Bridge.app" /Applications/
-open "/Applications/Darktime Calendar Bridge.app"
+cp -R "dist/mac/Darktime.app" /Applications/
+open "/Applications/Darktime.app"
 ```
 
 Opening the app with no arguments shows the MVP control window.
@@ -92,7 +92,7 @@ Check current permission:
 
 ```bash
 rm -f /tmp/darktime-auth.json
-open -W .build/DarktimeCalendarBridge.app --args authorization-status --output /tmp/darktime-auth.json
+open -W .build/Darktime.app --args authorization-status --output /tmp/darktime-auth.json
 cat /tmp/darktime-auth.json
 ```
 
@@ -100,19 +100,19 @@ Request permission:
 
 ```bash
 rm -f /tmp/darktime-request.json
-open -W .build/DarktimeCalendarBridge.app --args request-access --output /tmp/darktime-request.json
+open -W .build/Darktime.app --args request-access --output /tmp/darktime-request.json
 cat /tmp/darktime-request.json
 ```
 
 macOS should show a Calendar permission prompt. Grant full calendar access.
 
-## Direct Bridge Usage
+## Direct App Usage
 
 List calendars:
 
 ```bash
 rm -f /tmp/darktime-calendars.json
-open -W .build/DarktimeCalendarBridge.app --args list-calendars --output /tmp/darktime-calendars.json
+open -W .build/Darktime.app --args list-calendars --output /tmp/darktime-calendars.json
 cat /tmp/darktime-calendars.json
 ```
 
@@ -120,7 +120,7 @@ List events:
 
 ```bash
 rm -f /tmp/darktime-events.json
-open -W .build/DarktimeCalendarBridge.app --args list-events \
+open -W .build/Darktime.app --args list-events \
   --start 2026-06-28T09:00:00+08:00 \
   --end 2026-06-28T18:00:00+08:00 \
   --output /tmp/darktime-events.json
@@ -131,7 +131,7 @@ Create an event:
 
 ```bash
 rm -f /tmp/darktime-create.json
-open -W .build/DarktimeCalendarBridge.app --args create-event \
+open -W .build/Darktime.app --args create-event \
   --title "Darktime focus block" \
   --start 2026-06-28T10:00:00+08:00 \
   --end 2026-06-28T11:00:00+08:00 \
@@ -157,10 +157,10 @@ node /Users/lyshen/Desktop/project/darktime/dist/mcp-server.js
 The MCP server looks for the signed app in this order:
 
 - `DARKTIME_CALENDAR_APP`
-- `dist/mac/Darktime Calendar Bridge.app`
-- `.build/DarktimeCalendarBridge.app`
-- `~/Applications/Darktime Calendar Bridge.app`
-- `/Applications/Darktime Calendar Bridge.app`
+- `dist/mac/Darktime.app`
+- `.build/Darktime.app`
+- `~/Applications/Darktime.app`
+- `/Applications/Darktime.app`
 
 This keeps Apple Calendar TCC permission matched to the app identity.
 

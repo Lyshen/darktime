@@ -2,19 +2,24 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_APP_PATH="$ROOT_DIR/.build/DarktimeCalendarBridge.app"
+BUILD_APP_PATH="$ROOT_DIR/.build/Darktime.app"
 DIST_DIR="$ROOT_DIR/dist/mac"
-DIST_APP_PATH="$DIST_DIR/Darktime Calendar Bridge.app"
-ZIP_PATH="$DIST_DIR/Darktime-Calendar-Bridge-mac.zip"
+DIST_APP_PATH="$DIST_DIR/Darktime.app"
+ZIP_PATH="$DIST_DIR/Darktime-mac.zip"
 ICON_PATH="$ROOT_DIR/assets/DarktimeAppIcon.icns"
 
 bash "$ROOT_DIR/scripts/generate-app-icon.sh"
 swift build -c release --package-path "$ROOT_DIR"
 
-rm -rf "$BUILD_APP_PATH" "$DIST_APP_PATH" "$ZIP_PATH"
+rm -rf \
+  "$BUILD_APP_PATH" \
+  "$DIST_APP_PATH" \
+  "$ZIP_PATH" \
+  "$DIST_DIR/Darktime Calendar Bridge.app" \
+  "$DIST_DIR/Darktime-Calendar-Bridge-mac.zip"
 mkdir -p "$BUILD_APP_PATH/Contents/MacOS" "$BUILD_APP_PATH/Contents/Resources" "$DIST_DIR"
 
-cp "$ROOT_DIR/.build/release/calendar-bridge" "$BUILD_APP_PATH/Contents/MacOS/calendar-bridge"
+cp "$ROOT_DIR/.build/release/darktime" "$BUILD_APP_PATH/Contents/MacOS/darktime"
 cp "$ROOT_DIR/Sources/CalendarBridge/Info.plist" "$BUILD_APP_PATH/Contents/Info.plist"
 cp "$ICON_PATH" "$BUILD_APP_PATH/Contents/Resources/DarktimeAppIcon.icns"
 

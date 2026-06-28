@@ -39,11 +39,11 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: Darktime-Calendar-Bridge-mac
+          name: Darktime-mac
           path: |
-            dist/mac/Darktime Calendar Bridge.app
-            dist/mac/Darktime-Calendar-Bridge-mac.zip
-            dist/mac/Darktime-Calendar-Bridge-mac.dmg
+            dist/mac/Darktime.app
+            dist/mac/Darktime-mac.zip
+            dist/mac/Darktime-mac.dmg
           if-no-files-found: error
           retention-days: 14
 
@@ -56,13 +56,13 @@ jobs:
           set -euo pipefail
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             gh release upload "$TAG_NAME" \
-              "dist/mac/Darktime-Calendar-Bridge-mac.dmg" \
-              "dist/mac/Darktime-Calendar-Bridge-mac.zip" \
+              "dist/mac/Darktime-mac.dmg" \
+              "dist/mac/Darktime-mac.zip" \
               --clobber
           else
             gh release create "$TAG_NAME" \
-              "dist/mac/Darktime-Calendar-Bridge-mac.dmg" \
-              "dist/mac/Darktime-Calendar-Bridge-mac.zip" \
+              "dist/mac/Darktime-mac.dmg" \
+              "dist/mac/Darktime-mac.zip" \
               --title "$TAG_NAME" \
               --generate-notes
           fi

@@ -43,7 +43,7 @@ server.registerTool(
   "calendar_authorization_status",
   {
     title: "Calendar Authorization Status",
-    description: "Check whether the local Darktime bridge has full Apple Calendar read/write access.",
+    description: "Check whether Darktime has full Apple Calendar read/write access.",
     inputSchema: {}
   },
   async () => textResult(await runBridge("authorization-status"))
@@ -53,7 +53,7 @@ server.registerTool(
   "calendar_request_access",
   {
     title: "Request Calendar Access",
-    description: "Ask macOS to grant full Apple Calendar access to the local Darktime bridge. This may show a system permission prompt.",
+    description: "Ask macOS to grant full Apple Calendar access to Darktime. This may show a system permission prompt.",
     inputSchema: {}
   },
   async () => textResult(await runBridge("request-access"))
@@ -243,7 +243,7 @@ async function runBridge(command: string, pairs: CliPair[] = []): Promise<unknow
   }
 
   if (code !== 0) {
-    throw new Error(`calendar-bridge exited with code ${code}: ${stderr || stdout}`);
+    throw new Error(`Darktime exited with code ${code}: ${stderr || stdout}`);
   }
 
   return response.data;
@@ -254,15 +254,15 @@ function resolveBridgeLauncher(): BridgeLauncher {
   const explicitPath = process.env.DARKTIME_CALENDAR_BRIDGE;
   const appCandidates = [
     explicitAppPath,
-    path.join(projectRoot, "dist", "mac", "Darktime Calendar Bridge.app"),
-    path.join(projectRoot, ".build", "DarktimeCalendarBridge.app")
+    path.join(projectRoot, "dist", "mac", "Darktime.app"),
+    path.join(projectRoot, ".build", "Darktime.app")
   ].filter(Boolean) as string[];
 
   const home = process.env.HOME;
   if (home) {
-    appCandidates.push(path.join(home, "Applications", "Darktime Calendar Bridge.app"));
+    appCandidates.push(path.join(home, "Applications", "Darktime.app"));
   }
-  appCandidates.push(path.join("/Applications", "Darktime Calendar Bridge.app"));
+  appCandidates.push(path.join("/Applications", "Darktime.app"));
 
   const appPath = appCandidates.find((candidate) => existsSync(candidate));
   if (appPath) {
@@ -271,14 +271,14 @@ function resolveBridgeLauncher(): BridgeLauncher {
 
   const candidates = [
     explicitPath,
-    path.join(projectRoot, ".build", "release", "calendar-bridge"),
-    path.join(projectRoot, ".build", "debug", "calendar-bridge")
+    path.join(projectRoot, ".build", "release", "darktime"),
+    path.join(projectRoot, ".build", "debug", "darktime")
   ].filter(Boolean) as string[];
 
   const bridgePath = candidates.find((candidate) => existsSync(candidate));
   if (!bridgePath) {
     throw new Error(
-      `Could not find calendar bridge. Run "npm run build:app", set DARKTIME_CALENDAR_APP, or set DARKTIME_CALENDAR_BRIDGE. Checked apps: ${appCandidates.join(", ")}. Checked binaries: ${candidates.join(", ")}`
+      `Could not find Darktime. Run "npm run build:app", set DARKTIME_CALENDAR_APP, or set DARKTIME_CALENDAR_BRIDGE. Checked apps: ${appCandidates.join(", ")}. Checked binaries: ${candidates.join(", ")}`
     );
   }
 
@@ -356,13 +356,13 @@ async function waitForFile(filePath: string, timeoutMs: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
-  throw new Error(`Timed out waiting for calendar bridge output at ${filePath}`);
+  throw new Error(`Timed out waiting for Darktime output at ${filePath}`);
 }
 
 function parseBridgeResponse(stdout: string, stderr: string): BridgeResponse {
   try {
     return JSON.parse(stdout) as BridgeResponse;
   } catch (error) {
-    throw new Error(`calendar-bridge returned non-JSON output. stdout=${stdout} stderr=${stderr}`);
+    throw new Error(`Darktime returned non-JSON output. stdout=${stdout} stderr=${stderr}`);
   }
 }
