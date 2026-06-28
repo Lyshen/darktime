@@ -2,16 +2,26 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_PATH="$ROOT_DIR/.build/DarktimeCalendarBridge.app"
+BUILD_APP_PATH="$ROOT_DIR/.build/DarktimeCalendarBridge.app"
+DIST_DIR="$ROOT_DIR/dist/mac"
+DIST_APP_PATH="$DIST_DIR/Darktime Calendar Bridge.app"
+ZIP_PATH="$DIST_DIR/Darktime-Calendar-Bridge-mac.zip"
 
 swift build -c release --package-path "$ROOT_DIR"
 
-rm -rf "$APP_PATH"
-mkdir -p "$APP_PATH/Contents/MacOS"
+rm -rf "$BUILD_APP_PATH" "$DIST_APP_PATH" "$ZIP_PATH"
+mkdir -p "$BUILD_APP_PATH/Contents/MacOS" "$DIST_DIR"
 
-cp "$ROOT_DIR/.build/release/calendar-bridge" "$APP_PATH/Contents/MacOS/calendar-bridge"
-cp "$ROOT_DIR/Sources/CalendarBridge/Info.plist" "$APP_PATH/Contents/Info.plist"
+cp "$ROOT_DIR/.build/release/calendar-bridge" "$BUILD_APP_PATH/Contents/MacOS/calendar-bridge"
+cp "$ROOT_DIR/Sources/CalendarBridge/Info.plist" "$BUILD_APP_PATH/Contents/Info.plist"
 
-codesign --force --deep --sign - "$APP_PATH"
+codesign --force --deep --sign - "$BUILD_APP_PATH"
 
-echo "$APP_PATH"
+cp -R "$BUILD_APP_PATH" "$DIST_APP_PATH"
+codesign --force --deep --sign - "$DIST_APP_PATH"
+
+/usr/bin/ditto -c -k --keepParent "$DIST_APP_PATH" "$ZIP_PATH"
+
+echo "Development app: $BUILD_APP_PATH"
+echo "Installable app: $DIST_APP_PATH"
+echo "Zip artifact: $ZIP_PATH"

@@ -29,7 +29,26 @@ This builds:
 
 - `.build/release/calendar-bridge`
 - `.build/DarktimeCalendarBridge.app`
+- `dist/mac/Darktime Calendar Bridge.app`
+- `dist/mac/Darktime-Calendar-Bridge-mac.zip`
 - `dist/mcp-server.js`
+
+## Install Test Build
+
+Build the app artifact:
+
+```bash
+npm run build:all
+```
+
+Install it for local testing:
+
+```bash
+cp -R "dist/mac/Darktime Calendar Bridge.app" /Applications/
+open "/Applications/Darktime Calendar Bridge.app"
+```
+
+Opening the app with no arguments requests Calendar permission. The app is currently a helper app, so it has no visible UI after the permission flow.
 
 ## Apple Calendar Permission
 
@@ -101,7 +120,15 @@ MCP clients can launch:
 node /Users/lyshen/Desktop/project/darktime/dist/mcp-server.js
 ```
 
-The MCP server prefers `.build/DarktimeCalendarBridge.app` so Apple Calendar TCC permission matches the app identity. Override with `DARKTIME_CALENDAR_APP` if needed.
+The MCP server looks for the signed app in this order:
+
+- `DARKTIME_CALENDAR_APP`
+- `dist/mac/Darktime Calendar Bridge.app`
+- `.build/DarktimeCalendarBridge.app`
+- `~/Applications/Darktime Calendar Bridge.app`
+- `/Applications/Darktime Calendar Bridge.app`
+
+This keeps Apple Calendar TCC permission matched to the app identity.
 
 Available tools:
 

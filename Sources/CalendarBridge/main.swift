@@ -258,7 +258,7 @@ func success<T: Encodable>(_ data: T) -> AnyEncodable {
 
 func parseOptions(_ args: [String]) throws -> Options {
     guard args.count >= 2 else {
-        throw BridgeError.invalidArguments("Missing command. Run 'calendar-bridge help'.")
+        return Options(command: "request-access", values: [:], flags: [])
     }
 
     let command = args[1]

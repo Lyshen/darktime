@@ -73,6 +73,7 @@ Apple Calendar access is controlled by macOS privacy/TCC:
 
 - The bridge embeds calendar usage strings in its executable Info.plist.
 - The release build is wrapped in `DarktimeCalendarBridge.app` because macOS Calendar/TCC permission is bound to the signed app identity.
+- Build artifacts are emitted to `dist/mac/Darktime Calendar Bridge.app` and `dist/mac/Darktime-Calendar-Bridge-mac.zip` for local install testing.
 - On macOS 14+, the bridge requests full calendar access with EventKit's full-access API.
 - The user grants or denies access through the system permission prompt.
 - If access is denied or not yet granted, read/write operations fail with an actionable error.
@@ -133,7 +134,7 @@ Required local tools:
 Build the bridge:
 
 ```bash
-npm run build:app
+npm run build:all
 ```
 
 Install Node dependencies and build the MCP server:

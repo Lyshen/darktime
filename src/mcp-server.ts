@@ -254,8 +254,15 @@ function resolveBridgeLauncher(): BridgeLauncher {
   const explicitPath = process.env.DARKTIME_CALENDAR_BRIDGE;
   const appCandidates = [
     explicitAppPath,
+    path.join(projectRoot, "dist", "mac", "Darktime Calendar Bridge.app"),
     path.join(projectRoot, ".build", "DarktimeCalendarBridge.app")
   ].filter(Boolean) as string[];
+
+  const home = process.env.HOME;
+  if (home) {
+    appCandidates.push(path.join(home, "Applications", "Darktime Calendar Bridge.app"));
+  }
+  appCandidates.push(path.join("/Applications", "Darktime Calendar Bridge.app"));
 
   const appPath = appCandidates.find((candidate) => existsSync(candidate));
   if (appPath) {
@@ -320,12 +327,13 @@ function spawnAndCollect(command: string, args: string[]): Promise<{ stdout: str
 
 async function runAppBundle(appPath: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> {
   const outputPath = path.join(tmpdir(), `darktime-calendar-${process.pid}-${randomUUID()}.json`);
-  const openArgs = ["-W", appPath, "--args", ...args, "--output", outputPath];
+  const openArgs = [appPath, "--args", ...args, "--output", outputPath];
   const result = await spawnAndCollect("open", openArgs);
 
   let stdout = "";
   try {
-    await waitForFile(outputPath, 30_000);
+    const timeoutMs = args[0] === "request-access" ? 180_000 : 30_000;
+    await waitForFile(outputPath, timeoutMs);
     stdout = readFileSync(outputPath, "utf8");
   } finally {
     rmSync(outputPath, { force: true });
