@@ -36,6 +36,7 @@ Darktime macOS app
 TypeScript MCP server over stdio
   - Tool schemas
   - Safety confirmation for writes
+  - SQLite session/action logging
   - Stable local agent interface
                   |
                   v
@@ -76,8 +77,16 @@ The app is intentionally a control console, not a full calendar client. The firs
 - Which calendars are visible and writable?
 - Is the default writable calendar local-only or likely to sync?
 - How should Codex or Claude Code connect to the MCP server?
+- What recent MCP sessions and actions have occurred?
 
 This keeps the native app focused on trust, setup, and provider management while agents handle natural-language scheduling workflows.
+
+Dashboard v0 has four sections:
+
+- `Status`: Apple Calendar permission, stdio MCP mode, storage health.
+- `Sources`: Apple Calendar plus planned Google, Feishu, Outlook, and WeCom sources.
+- `Agent Access`: MCP command, app path, SQLite path, recent sessions.
+- `Activity`: recent reads, writes, blocked writes, and errors.
 
 ## Local Permission Model
 
@@ -92,6 +101,16 @@ Apple Calendar access is controlled by macOS privacy/TCC:
 - If access is denied or not yet granted, read/write operations fail with an actionable error.
 
 The MCP server does not store Apple Calendar credentials. It only launches Darktime locally.
+
+## Local Activity Storage
+
+MCP sessions and action logs are stored in SQLite:
+
+```text
+~/Library/Application Support/Darktime/darktime.sqlite3
+```
+
+Set `DARKTIME_DB` to override the path during development. The database records recent stdio MCP sessions, tool calls, write blocks, and errors. It does not store provider credentials.
 
 ## Normalized Event Model
 
