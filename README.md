@@ -6,6 +6,8 @@ Current MVP:
 
 - Apple Calendar read/write through a native Swift EventKit integration.
 - Local MCP server for Codex, Claude Code, and other MCP clients.
+- Dashboard with source status, stdio MCP health, recent sessions, and recent actions.
+- SQLite-backed local activity store.
 - Write operations require explicit `confirm: true` at the MCP layer.
 
 ## Local Tooling Check
@@ -82,7 +84,23 @@ The MVP app now opens a small control window with:
 - Calendar permission status and a grant-access button.
 - Visible Apple calendars with writable/read-only and local/sync hints.
 - A preferred write-target hint so local-only calendars are obvious.
-- MCP connection guidance and a copy button for the local MCP command.
+- MCP mode, storage path, recent sessions, recent activity, and a copy button for the local MCP command.
+
+## Dashboard Storage
+
+Darktime stores local MCP sessions and action logs in SQLite:
+
+```text
+~/Library/Application Support/Darktime/darktime.sqlite3
+```
+
+For development, override the path:
+
+```bash
+DARKTIME_DB=/tmp/darktime.sqlite3 npm run mcp
+```
+
+The current MCP server uses stdio. There is no localhost port in this MVP; Codex or Claude Code launches the MCP process directly.
 
 ## Apple Calendar Permission
 
@@ -180,3 +198,5 @@ Write tools require `confirm: true`.
 ## Design
 
 See [docs/calendar-mvp-design.md](/Users/lyshen/Desktop/project/darktime/docs/calendar-mvp-design.md).
+
+Dashboard v0 requirements are in [doc/mvp-dashboard-v0.md](/Users/lyshen/Desktop/project/darktime/doc/mvp-dashboard-v0.md).

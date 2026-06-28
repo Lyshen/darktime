@@ -2,8 +2,8 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -31,11 +31,24 @@ type BridgeLauncher =
   | { kind: "app"; appPath: string }
   | { kind: "binary"; binaryPath: string };
 
+type ToolResult = {
+  isError?: boolean;
+  content: Array<{
+    type: "text";
+    text: string;
+  }>;
+};
+
+type ActionStatus = "started" | "success" | "error" | "blocked";
+
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(moduleDir, "..");
+const sessionId = randomUUID();
+const clientName = process.env.DARKTIME_MCP_CLIENT_NAME || "MCP stdio client";
+const clientVersion = process.env.DARKTIME_MCP_CLIENT_VERSION || null;
 
 const server = new McpServer({
-  name: "darktime-calendar",
+  name: "darktime",
   version: "0.1.0"
 });
 
@@ -46,7 +59,9 @@ server.registerTool(
     description: "Check whether Darktime has full Apple Calendar read/write access.",
     inputSchema: {}
   },
-  async () => textResult(await runBridge("authorization-status"))
+  async () => withToolLogging("calendar_authorization_status", false, {}, async () =>
+    textResult(await runBridge("authorization-status"))
+  )
 );
 
 server.registerTool(
@@ -56,7 +71,9 @@ server.registerTool(
     description: "Ask macOS to grant full Apple Calendar access to Darktime. This may show a system permission prompt.",
     inputSchema: {}
   },
-  async () => textResult(await runBridge("request-access"))
+  async () => withToolLogging("calendar_request_access", false, {}, async () =>
+    textResult(await runBridge("request-access"))
+  )
 );
 
 server.registerTool(
@@ -66,7 +83,9 @@ server.registerTool(
     description: "List Apple calendars visible to this Mac through EventKit.",
     inputSchema: {}
   },
-  async () => textResult(await runBridge("list-calendars"))
+  async () => withToolLogging("calendar_list_calendars", false, {}, async () =>
+    textResult(await runBridge("list-calendars"))
+  )
 );
 
 server.registerTool(
@@ -81,11 +100,13 @@ server.registerTool(
     }
   },
   async ({ start, end, calendarId }) =>
-    textResult(await runBridge("list-events", [
-      ["start", start],
-      ["end", end],
-      ["calendar-id", calendarId]
-    ]))
+    withToolLogging("calendar_list_events", false, { start, end, calendarId }, async () =>
+      textResult(await runBridge("list-events", [
+        ["start", start],
+        ["end", end],
+        ["calendar-id", calendarId]
+      ]))
+    )
 );
 
 server.registerTool(
@@ -101,12 +122,14 @@ server.registerTool(
     }
   },
   async ({ start, end, durationMinutes, calendarId }) =>
-    textResult(await runBridge("find-free-slots", [
-      ["start", start],
-      ["end", end],
-      ["duration-minutes", durationMinutes],
-      ["calendar-id", calendarId]
-    ]))
+    withToolLogging("calendar_find_free_slots", false, { start, end, durationMinutes, calendarId }, async () =>
+      textResult(await runBridge("find-free-slots", [
+        ["start", start],
+        ["end", end],
+        ["duration-minutes", durationMinutes],
+        ["calendar-id", calendarId]
+      ]))
+    )
 );
 
 server.registerTool(
@@ -127,19 +150,22 @@ server.registerTool(
     }
   },
   async ({ title, start, end, calendarId, notes, location, url, availability, confirm }) => {
+    const request = { title, start, end, calendarId, notes, location, url, availability, confirm };
     const confirmation = requireConfirmedWrite(confirm, "create a calendar event");
-    if (confirmation) return confirmation;
+    if (confirmation) return logBlockedTool("calendar_create_event", true, request, confirmation);
 
-    return textResult(await runBridge("create-event", [
-      ["title", title],
-      ["start", start],
-      ["end", end],
-      ["calendar-id", calendarId],
-      ["notes", notes],
-      ["location", location],
-      ["url", url],
-      ["availability", availability]
-    ]));
+    return withToolLogging("calendar_create_event", true, request, async () =>
+      textResult(await runBridge("create-event", [
+        ["title", title],
+        ["start", start],
+        ["end", end],
+        ["calendar-id", calendarId],
+        ["notes", notes],
+        ["location", location],
+        ["url", url],
+        ["availability", availability]
+      ]))
+    );
   }
 );
 
@@ -162,20 +188,23 @@ server.registerTool(
     }
   },
   async ({ eventId, title, start, end, calendarId, notes, location, url, availability, confirm }) => {
+    const request = { eventId, title, start, end, calendarId, notes, location, url, availability, confirm };
     const confirmation = requireConfirmedWrite(confirm, "update a calendar event");
-    if (confirmation) return confirmation;
+    if (confirmation) return logBlockedTool("calendar_update_event", true, request, confirmation);
 
-    return textResult(await runBridge("update-event", [
-      ["event-id", eventId],
-      ["title", title],
-      ["start", start],
-      ["end", end],
-      ["calendar-id", calendarId],
-      ["notes", notes],
-      ["location", location],
-      ["url", url],
-      ["availability", availability]
-    ]));
+    return withToolLogging("calendar_update_event", true, request, async () =>
+      textResult(await runBridge("update-event", [
+        ["event-id", eventId],
+        ["title", title],
+        ["start", start],
+        ["end", end],
+        ["calendar-id", calendarId],
+        ["notes", notes],
+        ["location", location],
+        ["url", url],
+        ["availability", availability]
+      ]))
+    );
   }
 );
 
@@ -190,19 +219,24 @@ server.registerTool(
     }
   },
   async ({ eventId, confirm }) => {
+    const request = { eventId, confirm };
     const confirmation = requireConfirmedWrite(confirm, "delete a calendar event");
-    if (confirmation) return confirmation;
+    if (confirmation) return logBlockedTool("calendar_delete_event", true, request, confirmation);
 
-    return textResult(await runBridge("delete-event", [
-      ["event-id", eventId]
-    ]));
+    return withToolLogging("calendar_delete_event", true, request, async () =>
+      textResult(await runBridge("delete-event", [
+        ["event-id", eventId]
+      ]))
+    );
   }
 );
 
 const transport = new StdioServerTransport();
+await initializeStorage();
+await recordSessionStarted();
 await server.connect(transport);
 
-function requireConfirmedWrite(confirm: boolean, action: string) {
+function requireConfirmedWrite(confirm: boolean, action: string): ToolResult | null {
   if (confirm === true) {
     return null;
   }
@@ -218,7 +252,7 @@ function requireConfirmedWrite(confirm: boolean, action: string) {
   };
 }
 
-function textResult(data: unknown) {
+function textResult(data: unknown): ToolResult {
   return {
     content: [
       {
@@ -227,6 +261,256 @@ function textResult(data: unknown) {
       }
     ]
   };
+}
+
+async function withToolLogging(
+  action: string,
+  isWrite: boolean,
+  request: unknown,
+  operation: () => Promise<ToolResult>
+): Promise<ToolResult> {
+  try {
+    const result = await operation();
+    await recordAction({
+      action,
+      status: result.isError ? "error" : "success",
+      isWrite,
+      request,
+      response: result,
+      summary: summarizeToolResult(action, result)
+    });
+    return result;
+  } catch (error) {
+    await recordAction({
+      action,
+      status: "error",
+      isWrite,
+      request,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      summary: `${action} failed`
+    });
+    throw error;
+  }
+}
+
+async function logBlockedTool(
+  action: string,
+  isWrite: boolean,
+  request: unknown,
+  result: ToolResult
+): Promise<ToolResult> {
+  await recordAction({
+    action,
+    status: "blocked",
+    isWrite,
+    request,
+    response: result,
+    errorCode: "missing_confirm",
+    errorMessage: result.content[0]?.text,
+    summary: `${action} blocked by missing confirm`
+  });
+  return result;
+}
+
+async function initializeStorage(): Promise<void> {
+  await safeStorage(async () => {
+    const dbPath = darktimeDbPath();
+    mkdirSync(path.dirname(dbPath), { recursive: true });
+    await sqliteExec(`
+      PRAGMA journal_mode = WAL;
+      CREATE TABLE IF NOT EXISTS mcp_sessions (
+        id TEXT PRIMARY KEY,
+        client_name TEXT NOT NULL,
+        client_version TEXT,
+        transport TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        last_tool_name TEXT,
+        last_tool_status TEXT,
+        tool_call_count INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS action_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT NOT NULL,
+        session_id TEXT,
+        client_name TEXT,
+        source TEXT NOT NULL,
+        action TEXT NOT NULL,
+        status TEXT NOT NULL,
+        is_write INTEGER NOT NULL DEFAULT 0,
+        summary TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        request_json TEXT,
+        response_json TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_seen ON mcp_sessions(last_seen_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_action_logs_created_at ON action_logs(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_action_logs_session_id ON action_logs(session_id);
+    `);
+  });
+}
+
+async function recordSessionStarted(): Promise<void> {
+  const now = isoNow();
+  await safeStorage(async () => {
+    await sqliteExec(`
+      INSERT INTO mcp_sessions (
+        id,
+        client_name,
+        client_version,
+        transport,
+        started_at,
+        last_seen_at,
+        last_tool_name,
+        last_tool_status,
+        tool_call_count
+      ) VALUES (
+        ${sqlValue(sessionId)},
+        ${sqlValue(clientName)},
+        ${sqlValue(clientVersion)},
+        'stdio',
+        ${sqlValue(now)},
+        ${sqlValue(now)},
+        'server_started',
+        'started',
+        0
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        last_seen_at = excluded.last_seen_at,
+        last_tool_name = excluded.last_tool_name,
+        last_tool_status = excluded.last_tool_status;
+
+      INSERT INTO action_logs (
+        created_at,
+        session_id,
+        client_name,
+        source,
+        action,
+        status,
+        is_write,
+        summary
+      ) VALUES (
+        ${sqlValue(now)},
+        ${sqlValue(sessionId)},
+        ${sqlValue(clientName)},
+        'mcp',
+        'server_started',
+        'started',
+        0,
+        'MCP stdio session started'
+      );
+    `);
+  });
+}
+
+async function recordAction(input: {
+  action: string;
+  status: ActionStatus;
+  isWrite: boolean;
+  request?: unknown;
+  response?: unknown;
+  summary?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}): Promise<void> {
+  const now = isoNow();
+  await safeStorage(async () => {
+    await sqliteExec(`
+      INSERT INTO action_logs (
+        created_at,
+        session_id,
+        client_name,
+        source,
+        action,
+        status,
+        is_write,
+        summary,
+        error_code,
+        error_message,
+        request_json,
+        response_json
+      ) VALUES (
+        ${sqlValue(now)},
+        ${sqlValue(sessionId)},
+        ${sqlValue(clientName)},
+        'apple_calendar',
+        ${sqlValue(input.action)},
+        ${sqlValue(input.status)},
+        ${input.isWrite ? 1 : 0},
+        ${sqlValue(input.summary)},
+        ${sqlValue(input.errorCode)},
+        ${sqlValue(input.errorMessage)},
+        ${sqlValue(toJson(input.request))},
+        ${sqlValue(toJson(input.response))}
+      );
+
+      UPDATE mcp_sessions
+      SET
+        last_seen_at = ${sqlValue(now)},
+        last_tool_name = ${sqlValue(input.action)},
+        last_tool_status = ${sqlValue(input.status)},
+        tool_call_count = tool_call_count + 1
+      WHERE id = ${sqlValue(sessionId)};
+    `);
+  });
+}
+
+async function safeStorage(operation: () => Promise<void>): Promise<void> {
+  try {
+    await operation();
+  } catch {
+    // Observability must not break calendar operations.
+  }
+}
+
+async function sqliteExec(sql: string): Promise<void> {
+  const dbPath = darktimeDbPath();
+  const { stdout, stderr, code } = await spawnAndCollect("sqlite3", [dbPath], sql);
+  if (code !== 0) {
+    throw new Error(`sqlite3 failed with code ${code}: ${stderr || stdout}`);
+  }
+}
+
+function darktimeDbPath(): string {
+  if (process.env.DARKTIME_DB) {
+    return process.env.DARKTIME_DB;
+  }
+
+  return path.join(homedir(), "Library", "Application Support", "Darktime", "darktime.sqlite3");
+}
+
+function sqlValue(value: unknown): string {
+  if (value === undefined || value === null) {
+    return "NULL";
+  }
+
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function toJson(value: unknown): string | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function summarizeToolResult(action: string, result: ToolResult): string {
+  const text = result.content[0]?.text ?? "";
+  if (!text) {
+    return `${action} completed`;
+  }
+
+  return `${action}: ${text.replace(/\s+/g, " ").slice(0, 180)}`;
+}
+
+function isoNow(): string {
+  return new Date().toISOString();
 }
 
 async function runBridge(command: string, pairs: CliPair[] = []): Promise<unknown> {
@@ -299,29 +583,33 @@ function toCliArgs(pairs: CliPair[]): string[] {
   return args;
 }
 
-function spawnAndCollect(command: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> {
+function spawnAndCollect(command: string, args: string[], stdin?: string): Promise<{ stdout: string; stderr: string; code: number | null }> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: projectRoot,
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"]
     });
 
     let stdout = "";
     let stderr = "";
 
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
 
-    child.stdout.on("data", (chunk: string) => {
+    child.stdout?.on("data", (chunk: string) => {
       stdout += chunk;
     });
-    child.stderr.on("data", (chunk: string) => {
+    child.stderr?.on("data", (chunk: string) => {
       stderr += chunk;
     });
     child.on("error", reject);
     child.on("close", (code: number | null) => {
       resolve({ stdout, stderr, code });
     });
+
+    if (stdin !== undefined && child.stdin) {
+      child.stdin.end(stdin);
+    }
   });
 }
 

@@ -15,6 +15,7 @@ let package = Package(
             name: "CalendarBridge",
             exclude: ["Info.plist"],
             linkerSettings: [
+                .linkedLibrary("sqlite3"),
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",
                     "-Xlinker", "__TEXT",

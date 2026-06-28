@@ -46,7 +46,11 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
     private let accessDetailLabel = NSTextField(labelWithString: "")
     private let preferredCalendarLabel = NSTextField(labelWithString: "")
     private let calendarsTextView = NSTextView()
+    private let serviceStatusLabel = NSTextField(labelWithString: "")
+    private let agentsTextView = NSTextView()
+    private let activityTextView = NSTextView()
     private let appPathField = NSTextField(labelWithString: "")
+    private let dbPathField = NSTextField(labelWithString: "")
     private let mcpHintLabel = NSTextField(labelWithString: "")
     private let requestAccessButton = NSButton(title: "Grant Calendar Access", target: nil, action: nil)
     private let refreshButton = NSButton(title: "Refresh", target: nil, action: nil)
@@ -63,13 +67,13 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildWindow() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 780),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Darktime"
-        window.minSize = NSSize(width: 620, height: 480)
+        window.minSize = NSSize(width: 760, height: 640)
         window.center()
 
         let contentView = NSView()
@@ -79,7 +83,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         let rootStack = NSStackView()
         rootStack.orientation = .vertical
         rootStack.alignment = .leading
-        rootStack.spacing = 16
+        rootStack.spacing = 14
         rootStack.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(rootStack)
 
@@ -91,9 +95,10 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         ])
 
         rootStack.addArrangedSubview(makeHeader())
-        rootStack.addArrangedSubview(makeAccessSection())
-        rootStack.addArrangedSubview(makeCalendarSection())
-        rootStack.addArrangedSubview(makeMCPSection())
+        rootStack.addArrangedSubview(makeStatusSection())
+        rootStack.addArrangedSubview(makeSourcesSection())
+        rootStack.addArrangedSubview(makeAgentSection())
+        rootStack.addArrangedSubview(makeActivitySection())
 
         self.window = window
         window.makeKeyAndOrderFront(nil)
@@ -118,16 +123,21 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         return stack
     }
 
-    private func makeAccessSection() -> NSView {
+    private func makeStatusSection() -> NSView {
         let box = makeSectionBox()
         let stack = sectionStack(in: box)
 
         let titleRow = horizontalStack(spacing: 10)
-        let title = label("Access", size: 15, weight: .semibold)
+        let title = label("Status", size: 15, weight: .semibold)
         accessStatusLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
         titleRow.addArrangedSubview(title)
         titleRow.addArrangedSubview(makeSpacer())
         titleRow.addArrangedSubview(accessStatusLabel)
+
+        serviceStatusLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        serviceStatusLabel.textColor = .secondaryLabelColor
+        serviceStatusLabel.lineBreakMode = .byWordWrapping
+        serviceStatusLabel.maximumNumberOfLines = 2
 
         accessDetailLabel.font = NSFont.systemFont(ofSize: 12)
         accessDetailLabel.textColor = .secondaryLabelColor
@@ -149,35 +159,31 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         buttonRow.addArrangedSubview(makeSpacer())
 
         stack.addArrangedSubview(titleRow)
+        stack.addArrangedSubview(serviceStatusLabel)
         stack.addArrangedSubview(accessDetailLabel)
         stack.addArrangedSubview(buttonRow)
         return box
     }
 
-    private func makeCalendarSection() -> NSView {
+    private func makeSourcesSection() -> NSView {
         let box = makeSectionBox()
         let stack = sectionStack(in: box)
 
-        let title = label("Calendars", size: 15, weight: .semibold)
+        let title = label("Sources", size: 15, weight: .semibold)
 
         preferredCalendarLabel.font = NSFont.systemFont(ofSize: 12)
         preferredCalendarLabel.textColor = .secondaryLabelColor
         preferredCalendarLabel.lineBreakMode = .byWordWrapping
         preferredCalendarLabel.maximumNumberOfLines = 2
 
-        calendarsTextView.isEditable = false
-        calendarsTextView.isSelectable = true
-        calendarsTextView.drawsBackground = false
-        calendarsTextView.textContainerInset = NSSize(width: 8, height: 8)
-        calendarsTextView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        calendarsTextView.textColor = .labelColor
+        configureTextView(calendarsTextView)
 
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .bezelBorder
         scrollView.documentView = calendarsTextView
-        scrollView.heightAnchor.constraint(equalToConstant: 160).isActive = true
+        scrollView.heightAnchor.constraint(equalToConstant: 170).isActive = true
 
         stack.addArrangedSubview(title)
         stack.addArrangedSubview(preferredCalendarLabel)
@@ -185,7 +191,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         return box
     }
 
-    private func makeMCPSection() -> NSView {
+    private func makeAgentSection() -> NSView {
         let box = makeSectionBox()
         let stack = sectionStack(in: box)
 
@@ -204,6 +210,19 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         appPathField.textColor = .secondaryLabelColor
         appPathField.lineBreakMode = .byTruncatingMiddle
 
+        dbPathField.stringValue = "Store: \(DarktimeStorage.databasePath())"
+        dbPathField.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        dbPathField.textColor = .secondaryLabelColor
+        dbPathField.lineBreakMode = .byTruncatingMiddle
+
+        configureTextView(agentsTextView)
+        let agentsScrollView = NSScrollView()
+        agentsScrollView.translatesAutoresizingMaskIntoConstraints = false
+        agentsScrollView.hasVerticalScroller = true
+        agentsScrollView.borderType = .bezelBorder
+        agentsScrollView.documentView = agentsTextView
+        agentsScrollView.heightAnchor.constraint(equalToConstant: 118).isActive = true
+
         copyMCPHintButton.target = self
         copyMCPHintButton.action = #selector(copyMCPCommand)
         copyMCPHintButton.bezelStyle = .rounded
@@ -211,7 +230,28 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         stack.addArrangedSubview(title)
         stack.addArrangedSubview(mcpHintLabel)
         stack.addArrangedSubview(appPathField)
+        stack.addArrangedSubview(dbPathField)
+        stack.addArrangedSubview(agentsScrollView)
         stack.addArrangedSubview(copyMCPHintButton)
+        return box
+    }
+
+    private func makeActivitySection() -> NSView {
+        let box = makeSectionBox()
+        let stack = sectionStack(in: box)
+
+        let title = label("Activity", size: 15, weight: .semibold)
+        configureTextView(activityTextView)
+
+        let scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+        scrollView.documentView = activityTextView
+        scrollView.heightAnchor.constraint(equalToConstant: 138).isActive = true
+
+        stack.addArrangedSubview(title)
+        stack.addArrangedSubview(scrollView)
         return box
     }
 
@@ -268,6 +308,8 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func refreshState() {
+        refreshStorageState()
+
         let status = EKEventStore.authorizationStatus(for: .event)
         let canReadWrite = hasFullCalendarAccess(status)
 
@@ -277,16 +319,36 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
 
         if canReadWrite {
             accessDetailLabel.stringValue = "Calendar read/write is available to Darktime."
-            refreshCalendars()
+            refreshSources(canReadWrite: true)
         } else {
             accessDetailLabel.stringValue = "Grant full calendar access before MCP clients can read or write events."
             preferredCalendarLabel.stringValue = "No write target is available yet."
-            calendarsTextView.string = "Access is not granted yet."
+            refreshSources(canReadWrite: false)
         }
     }
 
-    private func refreshCalendars() {
-        let calendars = eventStore.calendars(for: .event)
+    private func refreshStorageState() {
+        do {
+            try DarktimeStorage.ensureDatabase()
+            let sessions = try DarktimeStorage.recentSessions()
+            let actions = try DarktimeStorage.recentActions()
+
+            serviceStatusLabel.stringValue = "MCP mode: stdio · storage: ready · recent sessions: \(sessions.count)"
+            agentsTextView.string = sessions.isEmpty
+                ? "No MCP sessions yet. Use Codex or Claude Code with the MCP command above."
+                : sessions.map(agentLine).joined(separator: "\n\n")
+            activityTextView.string = actions.isEmpty
+                ? "No agent activity has been recorded yet."
+                : actions.map(activityLine).joined(separator: "\n")
+        } catch {
+            serviceStatusLabel.stringValue = "MCP mode: stdio · storage: unavailable"
+            agentsTextView.string = "Storage error: \(error)"
+            activityTextView.string = "Storage error: \(error)"
+        }
+    }
+
+    private func refreshSources(canReadWrite: Bool) {
+        let calendars = (canReadWrite ? eventStore.calendars(for: .event) : [])
             .sorted { lhs, rhs in
                 lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
             }
@@ -301,7 +363,35 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
             preferredCalendarLabel.stringValue = "No writable calendar found."
         }
 
-        calendarsTextView.string = snapshots.map(calendarLine).joined(separator: "\n\n")
+        calendarsTextView.string = sourceLines(canReadWrite: canReadWrite, calendars: snapshots).joined(separator: "\n\n")
+    }
+
+    private func sourceLines(canReadWrite: Bool, calendars: [CalendarSnapshot]) -> [String] {
+        let appleStatus = canReadWrite ? "connected" : "needs access"
+        let appleLine = """
+        Apple Calendar
+          status: \(appleStatus)
+          calendars: \(calendars.count)
+          writable: \(calendars.filter(\.allowsContentModifications).count)
+        """
+
+        let calendarLines = calendars.map(calendarLine)
+        let plannedLines = [
+            plannedSourceLine("Google Calendar"),
+            plannedSourceLine("Feishu Calendar"),
+            plannedSourceLine("Outlook"),
+            plannedSourceLine("WeCom")
+        ]
+
+        return [appleLine] + calendarLines + plannedLines
+    }
+
+    private func plannedSourceLine(_ name: String) -> String {
+        """
+        \(name)
+          status: planned
+          note: not implemented in dashboard v0
+        """
     }
 
     private func calendarLine(_ calendar: CalendarSnapshot) -> String {
@@ -309,12 +399,33 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         let sync = calendar.sourceType == "local" ? "local/no phone sync" : "sync candidate"
 
         return """
-        \(calendar.title)
+        Apple Calendar / \(calendar.title)
           source: \(calendar.sourceTitle) / \(calendar.sourceType)
           type: \(calendar.type)
           status: \(writable), \(sync)
           id: \(calendar.calendarId)
         """
+    }
+
+    private func agentLine(_ session: MCPSessionSnapshot) -> String {
+        let lastTool = session.lastToolName ?? "none"
+        let status = session.lastToolStatus ?? "unknown"
+        let version = session.clientVersion.map { " \($0)" } ?? ""
+
+        return """
+        \(session.clientName)\(version)
+          transport: \(session.transport)
+          last seen: \(session.lastSeenAt)
+          last tool: \(lastTool) (\(status))
+          calls: \(session.toolCallCount)
+          session: \(session.id)
+        """
+    }
+
+    private func activityLine(_ action: ActionLogSnapshot) -> String {
+        let writeMarker = action.isWrite ? "WRITE" : "READ "
+        let summary = action.summary ?? action.errorMessage ?? ""
+        return "\(action.createdAt)  \(writeMarker)  \(action.status)  \(action.clientName ?? "agent")  \(action.action)  \(summary)"
     }
 
     private func label(
@@ -339,6 +450,15 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         box.contentViewMargins = NSSize(width: 14, height: 14)
         box.translatesAutoresizingMaskIntoConstraints = false
         return box
+    }
+
+    private func configureTextView(_ textView: NSTextView) {
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.textColor = .labelColor
     }
 
     private func sectionStack(in box: NSBox) -> NSStackView {
