@@ -506,11 +506,94 @@ function summarizeToolResult(action: string, result: ToolResult): string {
     return `${action} completed`;
   }
 
+  const payload = parseToolPayload(text);
+  if (action === "calendar_authorization_status") {
+    const record = asRecord(payload);
+    const status = stringField(record, "status") ?? "unknown";
+    const canReadWrite = booleanField(record, "canReadWrite") === true ? "read/write ready" : "not ready";
+    return `Apple Calendar permission is ${status} (${canReadWrite})`;
+  }
+
+  if (action === "calendar_list_calendars" && Array.isArray(payload)) {
+    return `Listed ${payload.length} Apple calendars`;
+  }
+
+  if (action === "calendar_list_events" && Array.isArray(payload)) {
+    const nextEvent = asRecord(payload[0]);
+    const nextTitle = stringField(nextEvent, "title");
+    const nextStart = stringField(nextEvent, "start");
+    const suffix = nextTitle && nextStart ? `; first: "${nextTitle}" at ${formatInstant(nextStart)}` : "";
+    return `Listed ${payload.length} calendar events${suffix}`;
+  }
+
+  if (action === "calendar_find_free_slots" && Array.isArray(payload)) {
+    return `Found ${payload.length} free calendar slots`;
+  }
+
+  if (["calendar_create_event", "calendar_update_event", "calendar_delete_event"].includes(action)) {
+    const record = asRecord(payload);
+    const verb = action === "calendar_create_event"
+      ? "Created"
+      : action === "calendar_update_event"
+        ? "Updated"
+        : "Deleted";
+    const title = stringField(record, "title") ?? "Untitled event";
+    const calendarTitle = stringField(record, "calendarTitle") ?? "Calendar";
+    const start = stringField(record, "start");
+    const end = stringField(record, "end");
+    const range = start && end ? `, ${formatRange(start, end)}` : "";
+    return `${verb} "${title}" in ${calendarTitle}${range}`;
+  }
+
   return `${action}: ${text.replace(/\s+/g, " ").slice(0, 180)}`;
 }
 
 function isoNow(): string {
   return new Date().toISOString();
+}
+
+function parseToolPayload(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function stringField(record: Record<string, unknown> | null, key: string): string | null {
+  const value = record?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function booleanField(record: Record<string, unknown> | null, key: string): boolean | null {
+  const value = record?.[key];
+  return typeof value === "boolean" ? value : null;
+}
+
+function formatRange(start: string, end: string): string {
+  return `${formatInstant(start)}-${formatInstant(end, { timeOnly: true })}`;
+}
+
+function formatInstant(value: string, options: { timeOnly?: boolean } = {}): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: options.timeOnly ? undefined : "short",
+    day: options.timeOnly ? undefined : "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 async function runBridge(command: string, pairs: CliPair[] = []): Promise<unknown> {
@@ -615,7 +698,7 @@ function spawnAndCollect(command: string, args: string[], stdin?: string): Promi
 
 async function runAppBundle(appPath: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> {
   const outputPath = path.join(tmpdir(), `darktime-calendar-${process.pid}-${randomUUID()}.json`);
-  const openArgs = [appPath, "--args", ...args, "--output", outputPath];
+  const openArgs = ["-n", appPath, "--args", ...args, "--output", outputPath];
   const result = await spawnAndCollect("open", openArgs);
 
   let stdout = "";

@@ -25,6 +25,8 @@ struct ActionLogSnapshot {
     let summary: String?
     let errorCode: String?
     let errorMessage: String?
+    let requestJson: String?
+    let responseJson: String?
 }
 
 enum DarktimeStorage {
@@ -138,7 +140,9 @@ enum DarktimeStorage {
               is_write,
               summary,
               error_code,
-              error_message
+              error_message,
+              request_json,
+              response_json
             FROM action_logs
             ORDER BY created_at DESC
             LIMIT \(max(1, limit));
@@ -156,7 +160,9 @@ enum DarktimeStorage {
                 isWrite: sqlite3_column_int(statement, 7) == 1,
                 summary: columnText(statement, 8),
                 errorCode: columnText(statement, 9),
-                errorMessage: columnText(statement, 10)
+                errorMessage: columnText(statement, 10),
+                requestJson: columnText(statement, 11),
+                responseJson: columnText(statement, 12)
             )
         }
     }

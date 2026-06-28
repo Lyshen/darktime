@@ -10,6 +10,7 @@ Dashboard v0 should make four things obvious:
 - Whether local agent access is available.
 - Which agents have recently called Darktime through MCP.
 - What actions agents have attempted or completed.
+- Whether the visible dashboard is fresh after an MCP process writes activity.
 
 ## Product Shape
 
@@ -117,6 +118,8 @@ Activity:
 - Show the latest action logs.
 - Write actions must be visibly marked.
 - Blocked writes caused by missing `confirm: true` should be logged.
+- Refresh automatically while the app is open, because MCP stdio calls can happen after the dashboard has already launched.
+- Prefer human-readable event details from `request_json` over raw truncated JSON summaries.
 
 ## Out Of Scope
 

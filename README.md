@@ -77,14 +77,16 @@ cp -R "dist/mac/Darktime.app" /Applications/
 open "/Applications/Darktime.app"
 ```
 
-Opening the app with no arguments shows the MVP control window.
+Opening the app with no arguments shows the MVP dashboard.
 
-The MVP app now opens a small control window with:
+The MVP app now opens a large Darktime dashboard with:
 
 - Calendar permission status and a grant-access button.
 - Visible Apple calendars with writable/read-only and local/sync hints.
 - A preferred write-target hint so local-only calendars are obvious.
 - MCP mode, storage path, recent sessions, recent activity, and a copy button for the local MCP command.
+- Automatic dashboard refresh every two seconds, so MCP reads and writes appear without restarting the app.
+- Activity rows that show human-readable event details when request metadata is available.
 
 ## Dashboard Storage
 
