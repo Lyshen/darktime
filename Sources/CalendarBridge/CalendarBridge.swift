@@ -107,6 +107,11 @@ struct FreeSlotSnapshot: Encodable {
 struct CalendarBridge {
     @MainActor
     static func main() async {
+        guard CommandLine.arguments.count >= 2 else {
+            launchCalendarAppUI()
+            return
+        }
+
         var outputPath: String?
         do {
             let options = try parseOptions(CommandLine.arguments)
@@ -258,7 +263,7 @@ func success<T: Encodable>(_ data: T) -> AnyEncodable {
 
 func parseOptions(_ args: [String]) throws -> Options {
     guard args.count >= 2 else {
-        return Options(command: "request-access", values: [:], flags: [])
+        throw BridgeError.invalidArguments("Missing command. Run 'calendar-bridge help'.")
     }
 
     let command = args[1]
@@ -312,6 +317,10 @@ func requestCalendarAccess(eventStore: EKEventStore) async throws -> Bool {
             }
         }
     }
+}
+
+func requestCalendarAccess() async throws -> Bool {
+    try await requestCalendarAccess(eventStore: EKEventStore())
 }
 
 func ensureFullCalendarAccess() throws {

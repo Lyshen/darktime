@@ -48,7 +48,14 @@ cp -R "dist/mac/Darktime Calendar Bridge.app" /Applications/
 open "/Applications/Darktime Calendar Bridge.app"
 ```
 
-Opening the app with no arguments requests Calendar permission. The app is currently a helper app, so it has no visible UI after the permission flow.
+Opening the app with no arguments shows the MVP control window.
+
+The MVP app now opens a small control window with:
+
+- Calendar permission status and a grant-access button.
+- Visible Apple calendars with writable/read-only and local/sync hints.
+- A preferred write-target hint so local-only calendars are obvious.
+- MCP connection guidance and a copy button for the local MCP command.
 
 ## Apple Calendar Permission
 

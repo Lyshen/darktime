@@ -9,6 +9,7 @@ The first MVP focuses on Apple Calendar on this Mac:
 - Read calendars and events through Apple EventKit.
 - Create, update, and delete Apple Calendar events.
 - Expose the capability through a local MCP server.
+- Provide a small Mac app control window for permission, calendar visibility, and MCP setup.
 - Keep calendar provider credentials and write permissions out of agent prompts.
 
 ## Why This Shape
@@ -66,6 +67,17 @@ The MCP server exposes matching tools:
 - `calendar_find_free_slots`
 
 Write tools require `confirm: true` at the MCP layer. This keeps accidental writes from happening when an agent is merely drafting a plan.
+
+## MVP App Surface
+
+The app is intentionally a control console, not a full calendar client. The first useful screen should answer:
+
+- Is calendar access granted?
+- Which calendars are visible and writable?
+- Is the default writable calendar local-only or likely to sync?
+- How should Codex or Claude Code connect to the MCP server?
+
+This keeps the native app focused on trust, setup, and provider management while agents handle natural-language scheduling workflows.
 
 ## Local Permission Model
 
