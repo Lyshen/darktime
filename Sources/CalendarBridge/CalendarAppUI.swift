@@ -405,20 +405,27 @@ private final class DashboardModel: ObservableObject {
 
 private struct DarktimeDashboard: View {
     @ObservedObject var model: DashboardModel
+    @AppStorage("darktime.sidebarWidth") private var sidebarWidth = 230.0
     private let refreshTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    private let minSidebarWidth = 190.0
+    private let maxSidebarWidth = 340.0
 
     var body: some View {
         ZStack {
             DTColor.workspace.ignoresSafeArea()
-            HSplitView {
+            HStack(spacing: 0) {
                 WorkspaceRail(model: model)
-                    .frame(minWidth: 190, idealWidth: 230, maxWidth: 320, maxHeight: .infinity)
+                    .frame(width: CGFloat(sidebarWidth))
+                    .frame(maxHeight: .infinity)
+
+                SidebarResizeHandle(width: $sidebarWidth, minWidth: minSidebarWidth, maxWidth: maxSidebarWidth)
 
                 workspace
                     .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .background(DTColor.workspace)
             }
         }
+        .font(.system(size: 13, weight: .regular, design: .default))
         .foregroundStyle(DTColor.text)
         .onReceive(refreshTimer) { _ in
             model.refresh()
@@ -440,15 +447,52 @@ private struct DarktimeDashboard: View {
     }
 }
 
+private struct SidebarResizeHandle: View {
+    @Binding var width: Double
+    let minWidth: Double
+    let maxWidth: Double
+    @State private var dragStartWidth: Double?
+    @State private var isHovering = false
+
+    var body: some View {
+        Rectangle()
+            .fill(isHovering ? DTColor.line.opacity(1.35) : DTColor.line)
+            .frame(width: 1)
+            .overlay(
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: 10)
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        isHovering = hovering
+                        if hovering {
+                            NSCursor.resizeLeftRight.push()
+                        } else {
+                            NSCursor.pop()
+                        }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                if dragStartWidth == nil {
+                                    dragStartWidth = width
+                                }
+                                let proposed = (dragStartWidth ?? width) + Double(value.translation.width)
+                                width = min(max(proposed, minWidth), maxWidth)
+                            }
+                            .onEnded { _ in
+                                dragStartWidth = nil
+                            }
+                    )
+            )
+    }
+}
+
 private struct WorkspaceRail: View {
     @ObservedObject var model: DashboardModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Darktime")
-                .font(.system(size: 18, weight: .semibold))
-                .padding(.bottom, 18)
-
             railButton(for: .capture)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -467,34 +511,13 @@ private struct WorkspaceRail: View {
     }
 
     private func railButton(for section: WorkspaceSection) -> some View {
-        Button {
+        RailItemButton(
+            section: section,
+            isSelected: model.selectedSection == section,
+            count: count(for: section)
+        ) {
             model.selectedSection = section
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: section.systemImage)
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 18)
-                Text(section.title)
-                    .font(.system(size: 13, weight: .semibold))
-                Spacer()
-                if let count = count(for: section), count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundStyle(model.selectedSection == section ? DTColor.text : DTColor.dimmed)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(DTColor.panel)
-                        .clipShape(Capsule())
-                }
-            }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 9)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .foregroundStyle(model.selectedSection == section ? DTColor.text : DTColor.muted)
-            .background(model.selectedSection == section ? DTColor.sidebarSelection : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
         }
-        .buttonStyle(.plain)
     }
 
     private func count(for section: WorkspaceSection) -> Int? {
@@ -503,6 +526,46 @@ private struct WorkspaceRail: View {
         case .inbox: return model.inboxMatters.count
         case .rootbox: return model.rootboxMatters.count
         case .calendar: return nil
+        }
+    }
+}
+
+private struct RailItemButton: View {
+    let section: WorkspaceSection
+    let isSelected: Bool
+    let count: Int?
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: section.systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 18)
+                Text(section.title)
+                    .font(.system(size: 14, weight: .semibold, design: .default))
+                Spacer()
+                if let count, count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .semibold, design: .default))
+                        .foregroundStyle(isSelected ? DTColor.text : DTColor.dimmed)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(DTColor.workspace.opacity(0.78))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(isSelected ? DTColor.text : DTColor.muted)
+            .background(isSelected || isHovering ? DTColor.sidebarSelection : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovering = hovering
         }
     }
 }
@@ -519,40 +582,31 @@ private struct CaptureWorkspace: View {
 
             VStack(spacing: 28) {
                 Text("What matters in your mind?")
-                    .font(.system(size: 30, weight: .semibold))
+                    .font(.system(size: 30, weight: .semibold, design: .default))
                     .foregroundStyle(DTColor.text)
 
                 VStack(spacing: 0) {
-                    ZStack(alignment: .topLeading) {
-                        TextEditor(text: $draft)
-                            .font(.system(size: 15))
-                            .foregroundStyle(DTColor.text)
-                            .scrollContentBackground(.hidden)
-                            .background(Color.clear)
-                            .focused($focused)
-                            .frame(height: 54)
-                            .padding(.horizontal, 14)
-                            .padding(.top, 12)
-
-                        if draft.isEmpty {
-                            Text("Capture it.")
-                                .font(.system(size: 15))
-                                .foregroundStyle(DTColor.dimmed)
-                                .padding(.horizontal, 19)
-                                .padding(.top, 20)
-                                .allowsHitTesting(false)
-                        }
-                    }
+                    TextField("Capture it.", text: $draft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 15, weight: .regular, design: .default))
+                        .foregroundStyle(DTColor.text)
+                        .lineLimit(1...4)
+                        .focused($focused)
+                        .onSubmit(save)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 16)
+                        .padding(.bottom, 8)
+                        .frame(minHeight: 52, alignment: .topLeading)
 
                     HStack(alignment: .center, spacing: 10) {
                         if let savedMessage {
                             Label(savedMessage, systemImage: "checkmark.circle.fill")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.system(size: 12, weight: .medium, design: .default))
                                 .foregroundStyle(DTColor.green)
                                 .transition(.opacity)
                         } else {
                             Label("Inbox", systemImage: "tray")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.system(size: 12, weight: .medium, design: .default))
                                 .foregroundStyle(DTColor.dimmed)
                         }
 
@@ -576,7 +630,7 @@ private struct CaptureWorkspace: View {
                     .padding(.horizontal, 14)
                     .padding(.bottom, 10)
                 }
-                .frame(maxWidth: 850, minHeight: 112)
+                .frame(maxWidth: 850, minHeight: 104)
                 .background(DTColor.panel)
                 .overlay(
                     RoundedRectangle(cornerRadius: 18)
@@ -1355,8 +1409,8 @@ private struct SignalDot: View {
 
 private enum DTColor {
     static let workspace = Color.white
-    static let sidebar = Color(red: 0.94, green: 0.945, blue: 0.95)
-    static let sidebarSelection = Color(red: 0.885, green: 0.89, blue: 0.895)
+    static let sidebar = Color(red: 0.93, green: 0.935, blue: 0.94).opacity(0.86)
+    static let sidebarSelection = Color.black.opacity(0.065)
     static let header = Color(red: 0.985, green: 0.985, blue: 0.975)
     static let panel = Color.white
     static let row = Color(red: 0.955, green: 0.955, blue: 0.955)
