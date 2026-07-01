@@ -34,6 +34,11 @@ private func configureApplicationMenu() {
         action: #selector(CalendarAppDelegate.showQuickCaptureFromMenu(_:)),
         keyEquivalent: "n"
     )
+    appMenu.addItem(
+        withTitle: "Calendar",
+        action: #selector(CalendarAppDelegate.showCalendarFromMenu(_:)),
+        keyEquivalent: "k"
+    )
     appMenu.addItem(NSMenuItem.separator())
     appMenu.addItem(
         withTitle: "Quit Darktime",
@@ -79,22 +84,39 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         showQuickCapture()
     }
 
+    @objc func showCalendarFromMenu(_ sender: Any?) {
+        model?.selectedSection = .calendar
+        showMainWindow()
+    }
+
     private func buildWindow(model: DashboardModel) {
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 840)
         let contentRect = visibleFrame.insetBy(dx: max(24, visibleFrame.width * 0.035), dy: max(24, visibleFrame.height * 0.05))
         let window = NSWindow(
             contentRect: contentRect,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Darktime"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = .white
         window.minSize = NSSize(width: 1060, height: 680)
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.appearance = NSAppearance(named: .aqua)
         window.contentView = NSHostingView(rootView: DarktimeDashboard(model: model))
 
         self.window = window
         window.makeKeyAndOrderFront(nil)
+    }
+
+    private func showMainWindow() {
+        if window == nil, let model {
+            buildWindow(model: model)
+        }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func registerQuickCaptureHotKey() {
@@ -187,58 +209,50 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .transient]
         panel.isReleasedWhenClosed = false
-        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.appearance = NSAppearance(named: .aqua)
         return panel
     }
 }
 
 private enum WorkspaceSection: String, CaseIterable, Identifiable {
+    case capture
     case inbox
-    case clear
     case rootbox
     case calendar
-    case activity
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .capture: return "Capture"
         case .inbox: return "Inbox"
-        case .clear: return "Clear"
         case .rootbox: return "Rootbox"
         case .calendar: return "Calendar"
-        case .activity: return "Activity"
         }
     }
 
     var systemImage: String {
         switch self {
+        case .capture: return "square.and.pencil"
         case .inbox: return "tray.fill"
-        case .clear: return "sparkles"
         case .rootbox: return "tree.fill"
         case .calendar: return "calendar"
-        case .activity: return "waveform.path.ecg"
         }
     }
 }
 
 @MainActor
 private final class DashboardModel: ObservableObject {
-    @Published var selectedSection: WorkspaceSection = .inbox
+    @Published var selectedSection: WorkspaceSection = .capture
     @Published var authorizationStatus = "checking"
     @Published var canReadWrite = false
     @Published var calendars: [CalendarSnapshot] = []
     @Published var sessions: [MCPSessionSnapshot] = []
-    @Published var actions: [ActionLogSnapshot] = []
     @Published var matters: [MatterSnapshot] = []
-    @Published var matterLogs: [MatterLogSnapshot] = []
     @Published var storageReady = false
     @Published var storageError: String?
-    @Published var lastRefreshed: Date?
     @Published var isRequestingAccess = false
     @Published var copiedCommand = false
-    @Published var captureText = ""
-    @Published var selectedMatterID: String?
 
     private let eventStore = EKEventStore()
 
@@ -262,41 +276,17 @@ private final class DashboardModel: ObservableObject {
         storageReady
     }
 
-    var lastActivity: ActionLogSnapshot? {
-        actions.first
-    }
-
     var inboxMatters: [MatterSnapshot] {
         matters.filter { $0.status == "inbox" }
-    }
-
-    var clearQueue: [MatterSnapshot] {
-        matters.filter { ["inbox", "today", "later"].contains($0.status) }
     }
 
     var rootboxMatters: [MatterSnapshot] {
         matters.filter { $0.status == "rootbox" }
     }
 
-    var selectedMatter: MatterSnapshot? {
-        guard let selectedMatterID else {
-            return matters.first
-        }
-        return matters.first { $0.id == selectedMatterID } ?? matters.first
-    }
-
-    var todayCount: Int {
-        matters.filter { $0.status == "today" }.count
-    }
-
-    var droppedCount: Int {
-        matters.filter { $0.status == "dropped" }.count
-    }
-
     func refresh() {
         refreshStorage()
         refreshCalendar()
-        lastRefreshed = Date()
     }
 
     func requestAccess() async {
@@ -321,21 +311,17 @@ private final class DashboardModel: ObservableObject {
         }
     }
 
-    func captureCurrentText() {
-        capture(text: captureText, source: "manual")
-        captureText = ""
-    }
-
-    func capture(text: String, source: String = "manual") {
+    func capture(text: String, source: String = "manual", revealInbox: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return
         }
 
         do {
-            let matter = try DarktimeStorage.createMatter(text: trimmed, source: source)
-            selectedMatterID = matter.id
-            selectedSection = .inbox
+            _ = try DarktimeStorage.createMatter(text: trimmed, source: source)
+            if revealInbox {
+                selectedSection = .inbox
+            }
             refresh()
         } catch {
             storageReady = false
@@ -345,12 +331,11 @@ private final class DashboardModel: ObservableObject {
 
     func moveMatter(_ matter: MatterSnapshot, to status: String) {
         do {
-            let updated = try DarktimeStorage.updateMatterStatus(id: matter.id, status: status)
-            selectedMatterID = updated.id
+            _ = try DarktimeStorage.updateMatterStatus(id: matter.id, status: status)
             if status == "rootbox" {
                 selectedSection = .rootbox
-            } else if status == "dropped" || status == "done" {
-                selectedSection = .clear
+            } else if status == "dropped" || status == "done" || status == "later" {
+                selectedSection = .inbox
             }
             refresh()
         } catch {
@@ -384,17 +369,14 @@ private final class DashboardModel: ObservableObject {
     private func refreshStorage() {
         do {
             try DarktimeStorage.ensureDatabase()
+            _ = try DarktimeStorage.importShortcutInbox()
             sessions = try DarktimeStorage.recentSessions(limit: 12)
-            actions = try DarktimeStorage.recentActions(limit: 42)
             matters = try DarktimeStorage.recentMatters(limit: 180)
-            matterLogs = try DarktimeStorage.recentMatterLogs(limit: 50)
             storageReady = true
             storageError = nil
         } catch {
             sessions = []
-            actions = []
             matters = []
-            matterLogs = []
             storageReady = false
             storageError = String(describing: error)
         }
@@ -427,30 +409,14 @@ private struct DarktimeDashboard: View {
 
     var body: some View {
         ZStack {
-            DTColor.background.ignoresSafeArea()
-            VStack(spacing: 0) {
-                header
-                Divider().overlay(DTColor.line)
-                GeometryReader { geometry in
-                    let rightWidth = min(360, max(300, geometry.size.width * 0.25))
-                    let leftWidth: CGFloat = 230
+            DTColor.workspace.ignoresSafeArea()
+            HSplitView {
+                WorkspaceRail(model: model)
+                    .frame(minWidth: 190, idealWidth: 230, maxWidth: 320, maxHeight: .infinity)
 
-                    HStack(alignment: .top, spacing: 0) {
-                        WorkspaceRail(model: model)
-                            .frame(width: leftWidth)
-
-                        Divider().overlay(DTColor.line)
-
-                        workspace
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-                        if model.selectedSection != .calendar {
-                            Divider().overlay(DTColor.line)
-                            MatterInspector(model: model)
-                                .frame(width: rightWidth)
-                        }
-                    }
-                }
+                workspace
+                    .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .background(DTColor.workspace)
             }
         }
         .foregroundStyle(DTColor.text)
@@ -462,75 +428,15 @@ private struct DarktimeDashboard: View {
     @ViewBuilder
     private var workspace: some View {
         switch model.selectedSection {
+        case .capture:
+            CaptureWorkspace(model: model)
         case .inbox:
             InboxWorkspace(model: model)
-        case .clear:
-            ClearWorkspace(model: model)
         case .rootbox:
             RootboxWorkspace(model: model)
         case .calendar:
             CalendarWorkspace(model: model)
-        case .activity:
-            ActivityWorkspace(model: model)
         }
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 18) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Darktime")
-                    .font(.system(size: 26, weight: .semibold))
-                Text("Capture without thinking. Clear later. Keep only what matters.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DTColor.muted)
-            }
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                StatusPill(
-                    title: "\(model.inboxMatters.count) inbox",
-                    systemImage: "tray.fill",
-                    tint: model.inboxMatters.isEmpty ? DTColor.dimmed : DTColor.cyan
-                )
-                StatusPill(
-                    title: "\(model.rootboxMatters.count) rootbox",
-                    systemImage: "tree.fill",
-                    tint: model.rootboxMatters.isEmpty ? DTColor.dimmed : DTColor.green
-                )
-                StatusPill(
-                    title: model.canReadWrite ? "Calendar ready" : "Needs access",
-                    systemImage: model.canReadWrite ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
-                    tint: model.canReadWrite ? DTColor.green : DTColor.amber
-                )
-            }
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("Auto refresh: 2s")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(DTColor.muted)
-                Text(model.lastRefreshed.map(formatClock) ?? "Not refreshed")
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundStyle(DTColor.dimmed)
-            }
-
-            Button {
-                model.refresh()
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                (NSApp.delegate as? CalendarAppDelegate)?.showQuickCaptureFromMenu(nil)
-            } label: {
-                Label("Quick Capture", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 16)
-        .background(DTColor.header)
     }
 }
 
@@ -538,104 +444,179 @@ private struct WorkspaceRail: View {
     @ObservedObject var model: DashboardModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("WORKFLOW")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(DTColor.dimmed)
-                    .tracking(0)
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Darktime")
+                .font(.system(size: 18, weight: .semibold))
+                .padding(.bottom, 18)
 
-                ForEach(WorkspaceSection.allCases) { section in
-                    Button {
-                        model.selectedSection = section
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: section.systemImage)
-                                .frame(width: 18)
-                            Text(section.title)
-                                .font(.system(size: 13, weight: .semibold))
-                            Spacer()
-                            if let count = count(for: section), count > 0 {
-                                Text("\(count)")
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(DTColor.dimmed)
-                            }
-                        }
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 9)
-                        .foregroundStyle(model.selectedSection == section ? DTColor.text : DTColor.muted)
-                        .background(model.selectedSection == section ? DTColor.row : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
-                    }
-                    .buttonStyle(.plain)
-                }
+            railButton(for: .capture)
+
+            VStack(alignment: .leading, spacing: 6) {
+                railButton(for: .inbox)
+                railButton(for: .rootbox)
             }
-
-            Divider().overlay(DTColor.line)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("CAPTURE")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(DTColor.dimmed)
-                    .tracking(0)
-                Text("Use Control + Option + Space anywhere, or capture from the main workspace.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(DTColor.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .padding(.top, 26)
 
             Spacer()
-
-            InfoGrid(rows: [
-                ("Store", model.storageReady ? "ready" : "error"),
-                ("MCP", "stdio"),
-                ("DB", model.dbPath)
-            ])
         }
-        .padding(18)
+        .padding(.horizontal, 14)
+        .padding(.top, 54)
+        .padding(.bottom, 18)
         .frame(maxHeight: .infinity, alignment: .topLeading)
-        .background(DTColor.header)
+        .background(DTColor.sidebar)
+    }
+
+    private func railButton(for section: WorkspaceSection) -> some View {
+        Button {
+            model.selectedSection = section
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: section.systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 18)
+                Text(section.title)
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                if let count = count(for: section), count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(model.selectedSection == section ? DTColor.text : DTColor.dimmed)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(DTColor.panel)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(model.selectedSection == section ? DTColor.text : DTColor.muted)
+            .background(model.selectedSection == section ? DTColor.sidebarSelection : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
     }
 
     private func count(for section: WorkspaceSection) -> Int? {
         switch section {
+        case .capture: return nil
         case .inbox: return model.inboxMatters.count
-        case .clear: return model.clearQueue.count
         case .rootbox: return model.rootboxMatters.count
         case .calendar: return nil
-        case .activity: return model.matterLogs.count + model.actions.count
         }
     }
 }
 
-private struct CaptureBar: View {
+private struct CaptureWorkspace: View {
     @ObservedObject var model: DashboardModel
+    @State private var draft = ""
+    @State private var savedMessage: String?
+    @FocusState private var focused: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "plus.circle.fill")
-                .foregroundStyle(DTColor.cyan)
-            TextField("Capture a matter without deciding what it means...", text: $model.captureText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15))
-                .onSubmit {
-                    model.captureCurrentText()
+        ZStack {
+            DTColor.workspace
+
+            VStack(spacing: 28) {
+                Text("What matters in your mind?")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(DTColor.text)
+
+                VStack(spacing: 0) {
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: $draft)
+                            .font(.system(size: 15))
+                            .foregroundStyle(DTColor.text)
+                            .scrollContentBackground(.hidden)
+                            .background(Color.clear)
+                            .focused($focused)
+                            .frame(height: 54)
+                            .padding(.horizontal, 14)
+                            .padding(.top, 12)
+
+                        if draft.isEmpty {
+                            Text("Capture it.")
+                                .font(.system(size: 15))
+                                .foregroundStyle(DTColor.dimmed)
+                                .padding(.horizontal, 19)
+                                .padding(.top, 20)
+                                .allowsHitTesting(false)
+                        }
+                    }
+
+                    HStack(alignment: .center, spacing: 10) {
+                        if let savedMessage {
+                            Label(savedMessage, systemImage: "checkmark.circle.fill")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(DTColor.green)
+                                .transition(.opacity)
+                        } else {
+                            Label("Inbox", systemImage: "tray")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(DTColor.dimmed)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            save()
+                        } label: {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color.white)
+                                .frame(width: 32, height: 32)
+                                .background(canSave ? DTColor.text : DTColor.dimmed.opacity(0.45))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .keyboardShortcut(.return, modifiers: [.command])
+                        .disabled(!canSave)
+                        .help("Capture")
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
                 }
-            Button {
-                model.captureCurrentText()
-            } label: {
-                Label("Capture", systemImage: "tray.and.arrow.down.fill")
+                .frame(maxWidth: 850, minHeight: 112)
+                .background(DTColor.panel)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(DTColor.line, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .shadow(color: Color.black.opacity(0.08), radius: 22, x: 0, y: 10)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(model.captureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .padding(.horizontal, 56)
         }
-        .padding(14)
-        .background(DTColor.panel)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(DTColor.line, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                focused = true
+            }
+        }
+    }
+
+    private var canSave: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func save() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+
+        model.capture(text: trimmed, source: "manual", revealInbox: false)
+        draft = ""
+
+        withAnimation(.easeOut(duration: 0.18)) {
+            savedMessage = "Captured to Inbox"
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.easeOut(duration: 0.18)) {
+                savedMessage = nil
+            }
+        }
     }
 }
 
@@ -644,65 +625,15 @@ private struct InboxWorkspace: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            CaptureBar(model: model)
             WorkspaceTitle(
                 title: "Inbox",
-                detail: "Everything captured lands here first. Do not classify at capture time.",
+                detail: "Everything captured lands here first. Clear each matter by deciding what leaves and what stays.",
                 systemImage: "tray.fill"
             )
             MatterList(
                 matters: model.inboxMatters,
                 emptyTitle: "Inbox is clear",
                 emptyDetail: "Use quick capture to unload the next open loop.",
-                model: model
-            )
-        }
-        .padding(20)
-    }
-}
-
-private struct ClearWorkspace: View {
-    @ObservedObject var model: DashboardModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            WorkspaceTitle(
-                title: "Clear",
-                detail: "Move one matter at a time. Most things should leave your head, not become new systems.",
-                systemImage: "sparkles"
-            )
-
-            if let matter = model.clearQueue.first {
-                VStack(alignment: .leading, spacing: 14) {
-                    SectionEyebrow("Now Clearing")
-                    Text(matter.text)
-                        .font(.system(size: 22, weight: .semibold))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("Captured \(formatRelative(matter.createdAt)) from \(matter.source)")
-                        .font(.system(size: 12))
-                        .foregroundStyle(DTColor.muted)
-                    MatterActionBar(model: model, matter: matter, isProminent: true)
-                }
-                .padding(18)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(DTColor.panel)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(DTColor.cyan.opacity(0.24), lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                EmptyStateLine(
-                    systemImage: "checkmark.circle.fill",
-                    title: "Nothing to clear",
-                    detail: "Capture something first, or let the inbox stay quiet."
-                )
-            }
-
-            MatterList(
-                matters: Array(model.clearQueue.dropFirst()),
-                emptyTitle: "No remaining queue",
-                emptyDetail: "The next captured matter will appear here.",
                 model: model
             )
         }
@@ -750,32 +681,10 @@ private struct CalendarWorkspace: View {
                         AgentsPanel(model: model)
                             .frame(minHeight: 220)
                     }
-                    ActivityPanel(model: model)
-                        .frame(width: 380)
-                        .frame(minHeight: 420)
                 }
             }
             .padding(20)
         }
-    }
-}
-
-private struct ActivityWorkspace: View {
-    @ObservedObject var model: DashboardModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            WorkspaceTitle(
-                title: "Activity",
-                detail: "Recent capture, clear, rootbox, calendar, and MCP activity.",
-                systemImage: "waveform.path.ecg"
-            )
-            HStack(alignment: .top, spacing: 16) {
-                MatterLogPanel(model: model)
-                ActivityPanel(model: model)
-            }
-        }
-        .padding(20)
     }
 }
 
@@ -858,18 +767,19 @@ private struct MatterRow: View {
                 }
                 Spacer()
             }
-            MatterActionBar(model: model, matter: matter, isProminent: false)
+            if matter.status == "rootbox" {
+                RootboxActionBar(model: model, matter: matter)
+            } else {
+                InboxClearActionBar(model: model, matter: matter)
+            }
         }
         .padding(12)
-        .background(model.selectedMatterID == matter.id ? DTColor.cyan.opacity(0.08) : DTColor.row)
+        .background(DTColor.row)
         .overlay(
             RoundedRectangle(cornerRadius: 7)
-                .stroke(model.selectedMatterID == matter.id ? DTColor.cyan.opacity(0.3) : DTColor.line, lineWidth: 1)
+                .stroke(DTColor.line, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 7))
-        .onTapGesture {
-            model.selectedMatterID = matter.id
-        }
     }
 
     private func icon(for status: String) -> String {
@@ -895,21 +805,19 @@ private struct MatterRow: View {
     }
 }
 
-private struct MatterActionBar: View {
+private struct InboxClearActionBar: View {
     @ObservedObject var model: DashboardModel
     let matter: MatterSnapshot
-    let isProminent: Bool
 
     var body: some View {
         HStack(spacing: 8) {
             action("Drop", "xmark", "dropped", tint: DTColor.dimmed)
-            action("Today", "sun.max", "today", tint: DTColor.amber)
             action("Later", "clock", "later", tint: DTColor.cyan)
             action("Done", "checkmark", "done", tint: DTColor.green)
             action("Rootbox", "tree", "rootbox", tint: DTColor.green)
         }
         .buttonStyle(.bordered)
-        .controlSize(isProminent ? .regular : .small)
+        .controlSize(.small)
     }
 
     private func action(_ title: String, _ image: String, _ status: String, tint: Color) -> some View {
@@ -923,92 +831,28 @@ private struct MatterActionBar: View {
     }
 }
 
-private struct MatterInspector: View {
+private struct RootboxActionBar: View {
     @ObservedObject var model: DashboardModel
+    let matter: MatterSnapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            WorkspaceTitle(
-                title: "Matter",
-                detail: "The selected item is intentionally small. Clear decides what happens next.",
-                systemImage: "scope"
-            )
-
-            if let matter = model.selectedMatter {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(matter.text)
-                        .font(.system(size: 16, weight: .semibold))
-                        .fixedSize(horizontal: false, vertical: true)
-                    InfoGrid(rows: [
-                        ("Status", matter.status),
-                        ("Source", matter.source),
-                        ("Created", formatLocalDateTime(matter.createdAt)),
-                        ("Updated", formatLocalDateTime(matter.updatedAt))
-                    ])
-                    MatterActionBar(model: model, matter: matter, isProminent: false)
-                }
-                .padding(14)
-                .background(DTColor.panel)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(DTColor.line, lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                EmptyStateLine(
-                    systemImage: "scope",
-                    title: "No matter selected",
-                    detail: "Capture or select a matter to inspect it."
-                )
+        HStack(spacing: 8) {
+            Button {
+                model.moveMatter(matter, to: "inbox")
+            } label: {
+                Label("Move to Inbox", systemImage: "tray")
             }
+            .tint(DTColor.cyan)
 
-            MatterLogPanel(model: model)
-        }
-        .padding(20)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        .background(DTColor.background)
-    }
-}
-
-private struct MatterLogPanel: View {
-    @ObservedObject var model: DashboardModel
-
-    var body: some View {
-        Pane(title: "Matter Activity", systemImage: "clock.arrow.circlepath") {
-            if model.matterLogs.isEmpty {
-                EmptyStateLine(
-                    systemImage: "clock",
-                    title: "No matter activity",
-                    detail: "Capture and clear actions will appear here."
-                )
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(model.matterLogs, id: \.id) { log in
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: log.toStatus == "rootbox" ? "tree.fill" : "arrow.right.circle.fill")
-                                    .foregroundStyle(log.toStatus == "rootbox" ? DTColor.green : DTColor.cyan)
-                                    .frame(width: 28, height: 28)
-                                    .background((log.toStatus == "rootbox" ? DTColor.green : DTColor.cyan).opacity(0.1))
-                                    .clipShape(RoundedRectangle(cornerRadius: 7))
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(log.summary ?? humanizeAction(log.action))
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .lineLimit(2)
-                                    Text(formatRelative(log.createdAt))
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(DTColor.dimmed)
-                                }
-                                Spacer()
-                            }
-                            .padding(10)
-                            .background(DTColor.row)
-                            .clipShape(RoundedRectangle(cornerRadius: 7))
-                        }
-                    }
-                }
+            Button {
+                model.moveMatter(matter, to: "dropped")
+            } label: {
+                Label("Drop", systemImage: "xmark")
             }
+            .tint(DTColor.dimmed)
         }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
     }
 }
 
@@ -1042,6 +886,7 @@ private struct QuickCapturePanel: View {
                     Label("Save", systemImage: "tray.and.arrow.down.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(DTColor.accent)
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
@@ -1152,13 +997,6 @@ private struct StatusPanel: View {
                         tint: model.storageReady ? DTColor.green : DTColor.red,
                         systemImage: "cylinder.split.1x2"
                     )
-                    MetricTile(
-                        title: "Last Action",
-                        value: model.lastActivity?.status ?? "none",
-                        detail: model.lastActivity.map { formatRelative($0.createdAt) } ?? "waiting",
-                        tint: model.lastActivity.map(statusColor) ?? DTColor.dimmed,
-                        systemImage: "waveform.path.ecg"
-                    )
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -1220,32 +1058,6 @@ private struct AgentsPanel: View {
     }
 }
 
-private struct ActivityPanel: View {
-    @ObservedObject var model: DashboardModel
-
-    var body: some View {
-        Pane(title: "Activity", systemImage: "list.bullet.rectangle") {
-            if model.actions.isEmpty {
-                EmptyStateLine(
-                    systemImage: "clock.badge.questionmark",
-                    title: "No recorded activity",
-                    detail: "MCP reads and writes will appear here automatically."
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(model.actions, id: \.id) { action in
-                            ActivityRow(action: action)
-                        }
-                    }
-                    .padding(.trailing, 2)
-                }
-            }
-        }
-    }
-}
-
 private struct Pane<Content: View>: View {
     let title: String
     let systemImage: String
@@ -1271,25 +1083,6 @@ private struct Pane<Content: View>: View {
                 .stroke(DTColor.line, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-private struct StatusPill: View {
-    let title: String
-    let systemImage: String
-    let tint: Color
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-            Text(title)
-        }
-        .font(.system(size: 12, weight: .semibold))
-        .foregroundStyle(tint)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(tint.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 
@@ -1491,56 +1284,6 @@ private struct AgentRow: View {
     }
 }
 
-private struct ActivityRow: View {
-    let action: ActionLogSnapshot
-
-    var body: some View {
-        let presentation = activityPresentation(action)
-
-        HStack(alignment: .top, spacing: 11) {
-            Image(systemName: presentation.systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(presentation.tint)
-                .frame(width: 30, height: 30)
-                .background(presentation.tint.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 7))
-
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(presentation.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text(formatRelative(action.createdAt))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(DTColor.dimmed)
-                }
-
-                Text(presentation.detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(DTColor.muted)
-                    .lineLimit(2)
-
-                HStack(spacing: 7) {
-                    TinyTag(text: action.isWrite ? "WRITE" : "READ", tint: action.isWrite ? DTColor.amber : DTColor.cyan)
-                    TinyTag(text: action.status, tint: presentation.tint)
-                    Text(action.clientName ?? "agent")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(DTColor.dimmed)
-                        .lineLimit(1)
-                }
-            }
-        }
-        .padding(11)
-        .background(DTColor.row)
-        .overlay(
-            RoundedRectangle(cornerRadius: 7)
-                .stroke(action.isWrite ? DTColor.amber.opacity(0.22) : DTColor.line, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 7))
-    }
-}
-
 private struct TinyTag: View {
     let text: String
     let tint: Color
@@ -1611,148 +1354,22 @@ private struct SignalDot: View {
 }
 
 private enum DTColor {
-    static let background = Color(red: 0.055, green: 0.058, blue: 0.066)
-    static let header = Color(red: 0.078, green: 0.082, blue: 0.094)
-    static let panel = Color(red: 0.095, green: 0.1, blue: 0.115)
-    static let row = Color(red: 0.125, green: 0.13, blue: 0.148)
-    static let codeBackground = Color(red: 0.048, green: 0.051, blue: 0.06)
-    static let line = Color.white.opacity(0.08)
-    static let text = Color.white.opacity(0.9)
-    static let muted = Color.white.opacity(0.64)
-    static let dimmed = Color.white.opacity(0.42)
-    static let green = Color(red: 0.42, green: 0.86, blue: 0.62)
-    static let cyan = Color(red: 0.35, green: 0.78, blue: 0.95)
-    static let amber = Color(red: 0.94, green: 0.67, blue: 0.26)
-    static let red = Color(red: 0.95, green: 0.38, blue: 0.42)
-}
-
-private struct ActivityPresentation {
-    let title: String
-    let detail: String
-    let systemImage: String
-    let tint: Color
-}
-
-private func activityPresentation(_ action: ActionLogSnapshot) -> ActivityPresentation {
-    let tint = statusColor(action.status)
-    let request = jsonDictionary(action.requestJson)
-
-    switch action.action {
-    case "server_started":
-        return ActivityPresentation(
-            title: "MCP session started",
-            detail: action.summary ?? "A local stdio MCP process was launched.",
-            systemImage: "play.circle.fill",
-            tint: DTColor.cyan
-        )
-    case "calendar_authorization_status":
-        return ActivityPresentation(
-            title: "Checked calendar permission",
-            detail: action.summary ?? "Apple Calendar permission status was requested.",
-            systemImage: "lock.open.fill",
-            tint: tint
-        )
-    case "calendar_list_calendars":
-        return ActivityPresentation(
-            title: "Listed calendars",
-            detail: action.summary ?? "Apple Calendar source list was requested.",
-            systemImage: "calendar",
-            tint: tint
-        )
-    case "calendar_list_events":
-        return ActivityPresentation(
-            title: "Read calendar events",
-            detail: rangeDetail(from: request) ?? action.summary ?? "Calendar events were read.",
-            systemImage: "calendar.day.timeline.left",
-            tint: tint
-        )
-    case "calendar_find_free_slots":
-        return ActivityPresentation(
-            title: "Found free slots",
-            detail: rangeDetail(from: request) ?? action.summary ?? "Free time was calculated.",
-            systemImage: "clock.badge.checkmark",
-            tint: tint
-        )
-    case "calendar_create_event":
-        return ActivityPresentation(
-            title: "Created event",
-            detail: eventDetail(from: request) ?? action.summary ?? "A calendar event was created.",
-            systemImage: "calendar.badge.plus",
-            tint: tint
-        )
-    case "calendar_update_event":
-        return ActivityPresentation(
-            title: "Updated event",
-            detail: eventDetail(from: request) ?? action.summary ?? "A calendar event was updated.",
-            systemImage: "calendar.badge.clock",
-            tint: tint
-        )
-    case "calendar_delete_event":
-        return ActivityPresentation(
-            title: "Deleted event",
-            detail: stringValue(request["eventId"]) ?? action.summary ?? "A calendar event was deleted.",
-            systemImage: "calendar.badge.minus",
-            tint: tint
-        )
-    default:
-        return ActivityPresentation(
-            title: humanizeAction(action.action),
-            detail: action.errorMessage ?? action.summary ?? action.source,
-            systemImage: action.isWrite ? "pencil" : "eye",
-            tint: tint
-        )
-    }
-}
-
-private func eventDetail(from request: [String: Any]) -> String? {
-    guard let title = stringValue(request["title"]) else {
-        return rangeDetail(from: request)
-    }
-
-    let range = rangeDetail(from: request)
-    return range.map { "\"\(title)\" | \($0)" } ?? "\"\(title)\""
-}
-
-private func rangeDetail(from request: [String: Any]) -> String? {
-    guard let start = stringValue(request["start"]) else {
-        return nil
-    }
-
-    if let end = stringValue(request["end"]) {
-        return "\(formatLocalDateTime(start)) - \(formatLocalTime(end))"
-    }
-
-    return formatLocalDateTime(start)
-}
-
-private func jsonDictionary(_ text: String?) -> [String: Any] {
-    guard
-        let text,
-        let data = text.data(using: .utf8),
-        let object = try? JSONSerialization.jsonObject(with: data),
-        let dictionary = object as? [String: Any]
-    else {
-        return [:]
-    }
-    return dictionary
-}
-
-private func stringValue(_ value: Any?) -> String? {
-    guard let value = value as? String, !value.isEmpty else {
-        return nil
-    }
-    return value
-}
-
-private func humanizeAction(_ action: String) -> String {
-    action
-        .split(separator: "_")
-        .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-        .joined(separator: " ")
-}
-
-private func statusColor(_ action: ActionLogSnapshot) -> Color {
-    statusColor(action.status)
+    static let workspace = Color.white
+    static let sidebar = Color(red: 0.94, green: 0.945, blue: 0.95)
+    static let sidebarSelection = Color(red: 0.885, green: 0.89, blue: 0.895)
+    static let header = Color(red: 0.985, green: 0.985, blue: 0.975)
+    static let panel = Color.white
+    static let row = Color(red: 0.955, green: 0.955, blue: 0.955)
+    static let codeBackground = Color(red: 0.94, green: 0.94, blue: 0.94)
+    static let line = Color.black.opacity(0.075)
+    static let text = Color.black.opacity(0.86)
+    static let muted = Color.black.opacity(0.58)
+    static let dimmed = Color.black.opacity(0.36)
+    static let accent = Color.black.opacity(0.82)
+    static let green = Color(red: 0.18, green: 0.48, blue: 0.28)
+    static let cyan = Color(red: 0.19, green: 0.36, blue: 0.56)
+    static let amber = Color(red: 0.68, green: 0.42, blue: 0.12)
+    static let red = Color(red: 0.68, green: 0.18, blue: 0.18)
 }
 
 private func statusColor(_ status: String) -> Color {
@@ -1766,12 +1383,6 @@ private func statusColor(_ status: String) -> Color {
     default:
         return DTColor.cyan
     }
-}
-
-private func formatClock(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "HH:mm:ss"
-    return formatter.string(from: date)
 }
 
 private func formatRelative(_ isoString: String) -> String {

@@ -87,23 +87,20 @@ The first version should be a full-screen dashboard with clear working areas:
 Darktime
 
 Left rail
+- Capture
 - Inbox
-- Clear
 - Rootbox
-- Calendar
-- Activity
 
-Main area
-- Quick capture input
-- Current list or clear queue based on selected section
-- Item actions: Today, Later, Done, Drop, Rootbox
+Right workspace
+- Capture page with a centered text input card
+- Inbox list based on captured Matter
+- Rootbox list based on kept Matter
+- Inbox item actions: Drop, Later, Done, Rootbox
+- Rootbox item actions: Move to Inbox, Drop
 
-Right inspector
-- Selected item details
-- Source
-- Created time
-- Related activity logs
 ```
+
+Apple Calendar is available from the macOS menu as a secondary utility surface, not as a primary navigation item.
 
 The app should prioritize dense, readable information over decorative cards.
 
@@ -113,7 +110,7 @@ Capture should not require switching into a heavy notes interface.
 
 MVP v0 should provide:
 
-- A small quick capture input inside the main app.
+- A Capture page inside the main app with a centered text input card.
 - A global shortcut that opens a small capture panel.
 - Text-only capture first.
 
@@ -174,7 +171,6 @@ MCP tools should allow agents to:
 - Create Matter in Inbox.
 - List Matter by status.
 - Move Matter between statuses.
-- Read recent activity logs.
 
 MCP should not silently drop or move user Matter without explicit tool calls.
 
@@ -273,7 +269,6 @@ When added later, AI should behave as a quiet observer:
 - Global quick capture can create a Matter without using the main window.
 - App can import at least plain text files from the Shortcuts/iCloud inbox folder.
 - SQLite persists items and logs across app restarts.
-- Dashboard shows recent Matter activity.
 - `npm run build:all` passes.
 - `npm run build:dmg` passes.
 
