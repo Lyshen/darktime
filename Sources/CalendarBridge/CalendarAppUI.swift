@@ -455,36 +455,39 @@ private struct SidebarResizeHandle: View {
     @State private var isHovering = false
 
     var body: some View {
-        Rectangle()
-            .fill(isHovering ? DTColor.line.opacity(1.35) : DTColor.line)
-            .frame(width: 1)
-            .overlay(
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(width: 10)
-                    .contentShape(Rectangle())
-                    .onHover { hovering in
-                        isHovering = hovering
-                        if hovering {
-                            NSCursor.resizeLeftRight.push()
-                        } else {
-                            NSCursor.pop()
-                        }
+        ZStack {
+            Rectangle()
+                .fill(isHovering ? DTColor.line.opacity(1.35) : DTColor.line)
+                .frame(width: 1)
+
+            Rectangle()
+                .fill(Color.clear)
+                .frame(width: 10)
+                .contentShape(Rectangle())
+        }
+        .frame(width: 10)
+        .frame(maxHeight: .infinity)
+        .onHover { hovering in
+            isHovering = hovering
+            if hovering {
+                NSCursor.resizeLeftRight.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if dragStartWidth == nil {
+                        dragStartWidth = width
                     }
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                if dragStartWidth == nil {
-                                    dragStartWidth = width
-                                }
-                                let proposed = (dragStartWidth ?? width) + Double(value.translation.width)
-                                width = min(max(proposed, minWidth), maxWidth)
-                            }
-                            .onEnded { _ in
-                                dragStartWidth = nil
-                            }
-                    )
-            )
+                    let proposed = (dragStartWidth ?? width) + Double(value.translation.width)
+                    width = min(max(proposed, minWidth), maxWidth)
+                }
+                .onEnded { _ in
+                    dragStartWidth = nil
+                }
+        )
     }
 }
 
@@ -580,9 +583,9 @@ private struct CaptureWorkspace: View {
         ZStack {
             DTColor.workspace
 
-            VStack(spacing: 28) {
-                Text("What matters in your mind?")
-                    .font(.system(size: 30, weight: .semibold, design: .default))
+            VStack(spacing: 38) {
+                Text("What matters right now?")
+                    .font(.system(size: 30, weight: .regular, design: .default))
                     .foregroundStyle(DTColor.text)
 
                 VStack(spacing: 0) {
@@ -630,7 +633,7 @@ private struct CaptureWorkspace: View {
                     .padding(.horizontal, 14)
                     .padding(.bottom, 10)
                 }
-                .frame(maxWidth: 850, minHeight: 104)
+                .frame(maxWidth: 760, minHeight: 104)
                 .background(DTColor.panel)
                 .overlay(
                     RoundedRectangle(cornerRadius: 18)
@@ -678,20 +681,15 @@ private struct InboxWorkspace: View {
     @ObservedObject var model: DashboardModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            WorkspaceTitle(
-                title: "Inbox",
-                detail: "Everything captured lands here first. Clear each matter by deciding what leaves and what stays.",
-                systemImage: "tray.fill"
-            )
-            MatterList(
-                matters: model.inboxMatters,
-                emptyTitle: "Inbox is clear",
-                emptyDetail: "Use quick capture to unload the next open loop.",
-                model: model
-            )
-        }
-        .padding(20)
+        MatterWorkspace(
+            systemImage: "tray.fill",
+            title: "Inbox",
+            detail: "Everything captured lands here first. Clear each matter by deciding what leaves and what stays.",
+            matters: model.inboxMatters,
+            emptyTitle: "Inbox is clear",
+            emptyDetail: "Use quick capture to unload the next open loop.",
+            model: model
+        )
     }
 }
 
@@ -699,20 +697,68 @@ private struct RootboxWorkspace: View {
     @ObservedObject var model: DashboardModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            WorkspaceTitle(
-                title: "Rootbox",
-                detail: "A simple box for matters that survived Clear because they may keep growing.",
-                systemImage: "tree.fill"
-            )
+        MatterWorkspace(
+            systemImage: "tree.fill",
+            title: "Rootbox",
+            detail: "A simple box for matters that survived Clear because they may keep growing.",
+            matters: model.rootboxMatters,
+            emptyTitle: "Rootbox is empty",
+            emptyDetail: "Clear the inbox and keep only the few things worth returning to.",
+            model: model
+        )
+    }
+}
+
+private struct MatterWorkspace: View {
+    let systemImage: String
+    let title: String
+    let detail: String
+    let matters: [MatterSnapshot]
+    let emptyTitle: String
+    let emptyDetail: String
+    @ObservedObject var model: DashboardModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            WorkspaceTopBar(systemImage: systemImage, title: title, detail: detail)
+            Divider().overlay(DTColor.line.opacity(0.7))
+
             MatterList(
-                matters: model.rootboxMatters,
-                emptyTitle: "Rootbox is empty",
-                emptyDetail: "Clear the inbox and keep only the few things worth returning to.",
+                matters: matters,
+                emptyTitle: emptyTitle,
+                emptyDetail: emptyDetail,
                 model: model
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(20)
+        .background(DTColor.workspace)
+    }
+}
+
+private struct WorkspaceTopBar: View {
+    let systemImage: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DTColor.muted)
+                .frame(width: 18)
+            Text(title)
+                .font(.system(size: 13, weight: .semibold, design: .default))
+                .foregroundStyle(DTColor.text)
+            Text(detail)
+                .font(.system(size: 12, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.muted)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 46)
+        .background(DTColor.workspace)
     }
 }
 
@@ -774,20 +820,25 @@ private struct MatterList: View {
     @ObservedObject var model: DashboardModel
 
     var body: some View {
-        Pane(title: "Matters", systemImage: "list.bullet") {
-            if matters.isEmpty {
-                EmptyStateLine(systemImage: "tray", title: emptyTitle, detail: emptyDetail)
-            } else {
-                ScrollView {
+        ScrollView {
+            VStack(spacing: 0) {
+                if matters.isEmpty {
+                    EmptyStateLine(systemImage: "tray", title: emptyTitle, detail: emptyDetail)
+                } else {
                     LazyVStack(spacing: 10) {
                         ForEach(matters, id: \.id) { matter in
                             MatterRow(model: model, matter: matter)
                         }
                     }
-                    .padding(.trailing, 2)
                 }
             }
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 36)
+            .padding(.top, 26)
+            .padding(.bottom, 30)
         }
+        .background(DTColor.workspace)
     }
 }
 
