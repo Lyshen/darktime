@@ -405,7 +405,8 @@ private final class DashboardModel: ObservableObject {
 
 private struct DarktimeDashboard: View {
     @ObservedObject var model: DashboardModel
-    @AppStorage("darktime.sidebarWidth") private var sidebarWidth = 230.0
+    @AppStorage("darktime.sidebarWidth") private var storedSidebarWidth = 230.0
+    @State private var draggingSidebarWidth: Double?
     private let refreshTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
     private let minSidebarWidth = 190.0
     private let maxSidebarWidth = 340.0
@@ -417,8 +418,18 @@ private struct DarktimeDashboard: View {
                 WorkspaceRail(model: model)
                     .frame(width: CGFloat(sidebarWidth))
                     .frame(maxHeight: .infinity)
-
-                SidebarResizeHandle(width: $sidebarWidth, minWidth: minSidebarWidth, maxWidth: maxSidebarWidth)
+                    .overlay(alignment: .trailing) {
+                        SidebarResizeHandle(
+                            currentWidth: sidebarWidth,
+                            minWidth: minSidebarWidth,
+                            maxWidth: maxSidebarWidth,
+                            onChange: { draggingSidebarWidth = $0 },
+                            onEnd: { width in
+                                storedSidebarWidth = width
+                                draggingSidebarWidth = nil
+                            }
+                        )
+                    }
 
                 workspace
                     .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -430,6 +441,10 @@ private struct DarktimeDashboard: View {
         .onReceive(refreshTimer) { _ in
             model.refresh()
         }
+    }
+
+    private var sidebarWidth: Double {
+        min(max(draggingSidebarWidth ?? storedSidebarWidth, minSidebarWidth), maxSidebarWidth)
     }
 
     @ViewBuilder
@@ -448,22 +463,24 @@ private struct DarktimeDashboard: View {
 }
 
 private struct SidebarResizeHandle: View {
-    @Binding var width: Double
+    let currentWidth: Double
     let minWidth: Double
     let maxWidth: Double
+    let onChange: (Double) -> Void
+    let onEnd: (Double) -> Void
     @State private var dragStartWidth: Double?
     @State private var isHovering = false
 
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(isHovering ? DTColor.line.opacity(1.35) : DTColor.line)
-                .frame(width: 1)
-
+        ZStack(alignment: .trailing) {
             Rectangle()
                 .fill(Color.clear)
                 .frame(width: 10)
                 .contentShape(Rectangle())
+
+            Rectangle()
+                .fill(isHovering ? DTColor.line.opacity(1.35) : DTColor.line)
+                .frame(width: 1)
         }
         .frame(width: 10)
         .frame(maxHeight: .infinity)
@@ -479,15 +496,25 @@ private struct SidebarResizeHandle: View {
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
                     if dragStartWidth == nil {
-                        dragStartWidth = width
+                        dragStartWidth = currentWidth
                     }
                     let proposed = (dragStartWidth ?? width) + Double(value.translation.width)
-                    width = min(max(proposed, minWidth), maxWidth)
+                    onChange(clamped(proposed))
                 }
-                .onEnded { _ in
+                .onEnded { value in
+                    let proposed = (dragStartWidth ?? currentWidth) + Double(value.translation.width)
+                    onEnd(clamped(proposed))
                     dragStartWidth = nil
                 }
         )
+    }
+
+    private var width: Double {
+        currentWidth
+    }
+
+    private func clamped(_ value: Double) -> Double {
+        min(max(value, minWidth), maxWidth)
     }
 }
 
@@ -544,10 +571,10 @@ private struct RailItemButton: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: section.systemImage)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 15, weight: .regular))
                     .frame(width: 18)
                 Text(section.title)
-                    .font(.system(size: 14, weight: .semibold, design: .default))
+                    .font(.system(size: 15, weight: .regular, design: .default))
                 Spacer()
                 if let count, count > 0 {
                     Text("\(count)")
@@ -637,7 +664,7 @@ private struct CaptureWorkspace: View {
                 .background(DTColor.panel)
                 .overlay(
                     RoundedRectangle(cornerRadius: 18)
-                        .stroke(DTColor.line, lineWidth: 1)
+                        .stroke(DTColor.inputBorder, lineWidth: 1.25)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: Color.black.opacity(0.08), radius: 22, x: 0, y: 10)
@@ -684,7 +711,7 @@ private struct InboxWorkspace: View {
         MatterWorkspace(
             systemImage: "tray.fill",
             title: "Inbox",
-            detail: "Everything captured lands here first. Clear each matter by deciding what leaves and what stays.",
+            detail: "Captured matters, waiting to be cleared.",
             matters: model.inboxMatters,
             emptyTitle: "Inbox is clear",
             emptyDetail: "Use quick capture to unload the next open loop.",
@@ -700,7 +727,7 @@ private struct RootboxWorkspace: View {
         MatterWorkspace(
             systemImage: "tree.fill",
             title: "Rootbox",
-            detail: "A simple box for matters that survived Clear because they may keep growing.",
+            detail: "Matters worth keeping and returning to.",
             matters: model.rootboxMatters,
             emptyTitle: "Rootbox is empty",
             emptyDetail: "Clear the inbox and keep only the few things worth returning to.",
@@ -1467,6 +1494,7 @@ private enum DTColor {
     static let row = Color(red: 0.955, green: 0.955, blue: 0.955)
     static let codeBackground = Color(red: 0.94, green: 0.94, blue: 0.94)
     static let line = Color.black.opacity(0.075)
+    static let inputBorder = Color.black.opacity(0.14)
     static let text = Color.black.opacity(0.86)
     static let muted = Color.black.opacity(0.58)
     static let dimmed = Color.black.opacity(0.36)
