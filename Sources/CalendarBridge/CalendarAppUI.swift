@@ -429,12 +429,15 @@ private struct DarktimeDashboard: View {
                                 draggingSidebarWidth = nil
                             }
                         )
+                        .frame(width: 10)
+                        .frame(maxHeight: .infinity)
                     }
 
                 workspace
                     .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .background(DTColor.workspace)
             }
+            .ignoresSafeArea(.container, edges: .top)
         }
         .font(.system(size: 13, weight: .regular, design: .default))
         .foregroundStyle(DTColor.text)
@@ -462,55 +465,97 @@ private struct DarktimeDashboard: View {
     }
 }
 
-private struct SidebarResizeHandle: View {
+private struct SidebarResizeHandle: NSViewRepresentable {
     let currentWidth: Double
     let minWidth: Double
     let maxWidth: Double
     let onChange: (Double) -> Void
     let onEnd: (Double) -> Void
-    @State private var dragStartWidth: Double?
-    @State private var isHovering = false
 
-    var body: some View {
-        ZStack(alignment: .trailing) {
-            Rectangle()
-                .fill(Color.clear)
-                .frame(width: 10)
-                .contentShape(Rectangle())
-
-            Rectangle()
-                .fill(isHovering ? DTColor.line.opacity(1.35) : DTColor.line)
-                .frame(width: 1)
-        }
-        .frame(width: 10)
-        .frame(maxHeight: .infinity)
-        .onHover { hovering in
-            isHovering = hovering
-            if hovering {
-                NSCursor.resizeLeftRight.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if dragStartWidth == nil {
-                        dragStartWidth = currentWidth
-                    }
-                    let proposed = (dragStartWidth ?? width) + Double(value.translation.width)
-                    onChange(clamped(proposed))
-                }
-                .onEnded { value in
-                    let proposed = (dragStartWidth ?? currentWidth) + Double(value.translation.width)
-                    onEnd(clamped(proposed))
-                    dragStartWidth = nil
-                }
-        )
+    func makeNSView(context: Context) -> SidebarResizeHandleView {
+        SidebarResizeHandleView()
     }
 
-    private var width: Double {
-        currentWidth
+    func updateNSView(_ nsView: SidebarResizeHandleView, context: Context) {
+        nsView.currentWidth = currentWidth
+        nsView.minWidth = minWidth
+        nsView.maxWidth = maxWidth
+        nsView.onChange = onChange
+        nsView.onEnd = onEnd
+        nsView.needsDisplay = true
+    }
+}
+
+private final class SidebarResizeHandleView: NSView {
+    var currentWidth = 230.0
+    var minWidth = 190.0
+    var maxWidth = 340.0
+    var onChange: ((Double) -> Void)?
+    var onEnd: ((Double) -> Void)?
+
+    private var dragStartWidth = 230.0
+    private var dragStartX = 0.0
+    private var isHovering = false
+    private var trackingAreaRef: NSTrackingArea?
+
+    override var mouseDownCanMoveWindow: Bool {
+        false
+    }
+
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingAreaRef {
+            removeTrackingArea(trackingAreaRef)
+        }
+
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        trackingAreaRef = area
+        addTrackingArea(area)
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
+        needsDisplay = true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        dragStartWidth = currentWidth
+        dragStartX = Double(event.locationInWindow.x)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let proposed = dragStartWidth + Double(event.locationInWindow.x) - dragStartX
+        onChange?(clamped(proposed))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let proposed = dragStartWidth + Double(event.locationInWindow.x) - dragStartX
+        onEnd?(clamped(proposed))
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let alpha: CGFloat = isHovering ? 0.13 : 0.075
+        NSColor.black.withAlphaComponent(alpha).setFill()
+        NSRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height).fill()
     }
 
     private func clamped(_ value: Double) -> Double {
