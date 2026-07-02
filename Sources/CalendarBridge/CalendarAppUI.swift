@@ -203,12 +203,10 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
     private func makeQuickCaptureWindow() -> NSPanel {
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 118),
-            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
@@ -217,6 +215,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
+        panel.isMovableByWindowBackground = false
         panel.appearance = NSAppearance(named: .aqua)
         return panel
     }
@@ -1154,12 +1153,12 @@ private struct QuickCapturePanel: View {
                 .font(.system(size: 12, weight: .medium, design: .default))
                 .foregroundStyle(DTColor.green)
         } else if !model.quickCaptureDraft.isEmpty {
-            Text("Draft saved")
+            Text("Draft saved · Esc to close")
                 .font(.system(size: 12, weight: .regular, design: .default))
                 .foregroundStyle(DTColor.dimmed)
         } else {
-            Text("Control + Option + Space")
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
+            Text("Enter to capture · Esc to close")
+                .font(.system(size: 12, weight: .regular, design: .default))
                 .foregroundStyle(DTColor.dimmed)
         }
     }
@@ -1736,7 +1735,7 @@ private enum DTColor {
     static let row = Color(red: 0.955, green: 0.955, blue: 0.955)
     static let codeBackground = Color(red: 0.94, green: 0.94, blue: 0.94)
     static let line = Color.black.opacity(0.075)
-    static let inputBorder = Color.black.opacity(0.14)
+    static let inputBorder = Color.black.opacity(0.2)
     static let text = Color.black.opacity(0.86)
     static let muted = Color.black.opacity(0.58)
     static let dimmed = Color.black.opacity(0.36)
