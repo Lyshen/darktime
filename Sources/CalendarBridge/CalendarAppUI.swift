@@ -177,11 +177,15 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
 
         let panel = quickCaptureWindow ?? makeQuickCaptureWindow()
         quickCaptureWindow = panel
-        panel.contentView = NSHostingView(
+        panel.delegate = self
+        let hostingView = NSHostingView(
             rootView: QuickCapturePanel(model: model) { [weak self] in
                 self?.quickCaptureWindow?.orderOut(nil)
             }
         )
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        panel.contentView = hostingView
 
         if let screen = NSScreen.main {
             let size = panel.frame.size
@@ -198,7 +202,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeQuickCaptureWindow() -> NSPanel {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 108),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 118),
             styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -207,10 +211,26 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         panel.titlebarAppearsTransparent = true
         panel.isFloatingPanel = true
         panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .transient]
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = true
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
         panel.appearance = NSAppearance(named: .aqua)
         return panel
+    }
+}
+
+extension CalendarAppDelegate: NSWindowDelegate {
+    func windowDidResignKey(_ notification: Notification) {
+        guard
+            let panel = notification.object as? NSPanel,
+            panel == quickCaptureWindow
+        else {
+            return
+        }
+        panel.orderOut(nil)
     }
 }
 
@@ -243,6 +263,8 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
 
 @MainActor
 private final class DashboardModel: ObservableObject {
+    private static let quickCaptureDraftKey = "darktime.quickCaptureDraft"
+
     @Published var selectedSection: WorkspaceSection = .capture
     @Published var authorizationStatus = "checking"
     @Published var canReadWrite = false
@@ -253,8 +275,17 @@ private final class DashboardModel: ObservableObject {
     @Published var storageError: String?
     @Published var isRequestingAccess = false
     @Published var copiedCommand = false
+    @Published var quickCaptureDraft: String {
+        didSet {
+            UserDefaults.standard.set(quickCaptureDraft, forKey: Self.quickCaptureDraftKey)
+        }
+    }
 
     private let eventStore = EKEventStore()
+
+    init() {
+        quickCaptureDraft = UserDefaults.standard.string(forKey: Self.quickCaptureDraftKey) ?? ""
+    }
 
     var dbPath: String {
         DarktimeStorage.databasePath()
@@ -311,10 +342,11 @@ private final class DashboardModel: ObservableObject {
         }
     }
 
-    func capture(text: String, source: String = "manual", revealInbox: Bool = false) {
+    @discardableResult
+    func capture(text: String, source: String = "manual", revealInbox: Bool = false) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return
+            return false
         }
 
         do {
@@ -323,10 +355,16 @@ private final class DashboardModel: ObservableObject {
                 selectedSection = .inbox
             }
             refresh()
+            return true
         } catch {
             storageReady = false
             storageError = String(describing: error)
+            return false
         }
+    }
+
+    func clearQuickCaptureDraft() {
+        quickCaptureDraft = ""
     }
 
     func moveMatter(_ matter: MatterSnapshot, to status: String) {
@@ -1036,58 +1074,217 @@ private struct RootboxActionBar: View {
 private struct QuickCapturePanel: View {
     @ObservedObject var model: DashboardModel
     let onClose: () -> Void
-    @State private var text = ""
-    @FocusState private var focused: Bool
+    @State private var message: String?
+    @State private var errorMessage: String?
+
+    private var canSave: Bool {
+        !model.quickCaptureDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "bolt.fill")
-                    .foregroundStyle(DTColor.cyan)
-                Text("Quick Capture")
-                    .font(.system(size: 13, weight: .semibold))
+        VStack(spacing: 0) {
+            QuickCaptureTextInput(
+                text: $model.quickCaptureDraft,
+                placeholder: "Capture it.",
+                onSubmit: save,
+                onCancel: closeKeepingDraft
+            )
+            .frame(height: 46)
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
+
+            HStack(alignment: .center, spacing: 10) {
+                statusView
+
                 Spacer()
-                Text("Control + Option + Space")
-                    .font(.system(size: 11, design: .monospaced))
+
+                if canSave {
+                    Button {
+                        model.clearQuickCaptureDraft()
+                        errorMessage = nil
+                        message = nil
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
                     .foregroundStyle(DTColor.dimmed)
-            }
-            HStack(spacing: 10) {
-                TextField("One line. No labels. No decision yet.", text: $text)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 18))
-                    .focused($focused)
-                    .onSubmit(save)
+                    .help("Clear draft")
+                }
+
                 Button {
                     save()
                 } label: {
-                    Label("Save", systemImage: "tray.and.arrow.down.fill")
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .frame(width: 32, height: 32)
+                        .background(canSave ? DTColor.text : DTColor.dimmed.opacity(0.45))
+                        .clipShape(Circle())
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(DTColor.accent)
-                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .buttonStyle(.plain)
+                .disabled(!canSave)
+                .help("Capture")
             }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 9)
         }
-        .padding(16)
-        .background(DTColor.header)
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                focused = true
-            }
-        }
+        .background(DTColor.panel)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(DTColor.inputBorder, lineWidth: 1.25)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .shadow(color: Color.black.opacity(0.11), radius: 24, x: 0, y: 12)
         .onExitCommand {
-            onClose()
+            closeKeepingDraft()
         }
     }
 
+    @ViewBuilder
+    private var statusView: some View {
+        if let errorMessage {
+            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .medium, design: .default))
+                .foregroundStyle(DTColor.red)
+        } else if let message {
+            Label(message, systemImage: "checkmark.circle.fill")
+                .font(.system(size: 12, weight: .medium, design: .default))
+                .foregroundStyle(DTColor.green)
+        } else if !model.quickCaptureDraft.isEmpty {
+            Text("Draft saved")
+                .font(.system(size: 12, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.dimmed)
+        } else {
+            Text("Control + Option + Space")
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(DTColor.dimmed)
+        }
+    }
+
+    private func closeKeepingDraft() {
+        onClose()
+    }
+
     private func save() {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = model.quickCaptureDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            onClose()
             return
         }
-        model.capture(text: trimmed, source: "quick_capture")
-        text = ""
-        onClose()
+
+        if model.capture(text: trimmed, source: "quick_capture") {
+            model.clearQuickCaptureDraft()
+            errorMessage = nil
+            message = "Captured"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                onClose()
+            }
+        } else {
+            errorMessage = "Could not capture"
+        }
+    }
+}
+
+private struct QuickCaptureTextInput: NSViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let onSubmit: () -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    func makeNSView(context: Context) -> QuickCaptureTextView {
+        let textView = QuickCaptureTextView()
+        textView.delegate = context.coordinator
+        textView.font = NSFont.systemFont(ofSize: 15)
+        textView.textColor = NSColor.labelColor
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.textContainerInset = NSSize(width: 0, height: 0)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.placeholder = placeholder
+        textView.onSubmit = onSubmit
+        textView.onCancel = onCancel
+        return textView
+    }
+
+    func updateNSView(_ nsView: QuickCaptureTextView, context: Context) {
+        if nsView.string != text {
+            nsView.string = text
+        }
+        nsView.placeholder = placeholder
+        nsView.onSubmit = onSubmit
+        nsView.onCancel = onCancel
+
+        DispatchQueue.main.async {
+            nsView.window?.makeFirstResponder(nsView)
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding var text: String
+
+        init(text: Binding<String>) {
+            _text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else {
+                return
+            }
+            text = textView.string
+        }
+    }
+}
+
+private final class QuickCaptureTextView: NSTextView {
+    var placeholder = "" {
+        didSet {
+            needsDisplay = true
+        }
+    }
+    var onSubmit: (() -> Void)?
+    var onCancel: (() -> Void)?
+
+    override var mouseDownCanMoveWindow: Bool {
+        false
+    }
+
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 36, 76:
+            if event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.shift) {
+                insertNewline(nil)
+            } else {
+                onSubmit?()
+            }
+        case 53:
+            onCancel?()
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard string.isEmpty, !placeholder.isEmpty else {
+            return
+        }
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font ?? NSFont.systemFont(ofSize: 15),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ]
+        let point = NSPoint(x: textContainerOrigin.x, y: textContainerOrigin.y)
+        placeholder.draw(at: point, withAttributes: attributes)
     }
 }
 
