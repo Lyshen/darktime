@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Combine
 import EventKit
 import Foundation
@@ -29,6 +30,17 @@ private func configureApplicationMenu() {
     let appMenu = NSMenu()
 
     appMenu.addItem(
+        withTitle: "Quick Capture",
+        action: #selector(CalendarAppDelegate.showQuickCaptureFromMenu(_:)),
+        keyEquivalent: "n"
+    )
+    appMenu.addItem(
+        withTitle: "Calendar",
+        action: #selector(CalendarAppDelegate.showCalendarFromMenu(_:)),
+        keyEquivalent: "k"
+    )
+    appMenu.addItem(NSMenuItem.separator())
+    appMenu.addItem(
         withTitle: "Quit Darktime",
         action: #selector(NSApplication.terminate(_:)),
         keyEquivalent: "q"
@@ -42,17 +54,39 @@ private func configureApplicationMenu() {
 @MainActor
 private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
+    private var quickCaptureWindow: NSPanel?
     private var model: DashboardModel?
+    private var hotKeyRef: EventHotKeyRef?
+    private var eventHandlerRef: EventHandlerRef?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = DashboardModel()
         self.model = model
         buildWindow(model: model)
+        registerQuickCaptureHotKey()
         model.refresh()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+        }
+        if let eventHandlerRef {
+            RemoveEventHandler(eventHandlerRef)
+        }
+    }
+
+    @objc func showQuickCaptureFromMenu(_ sender: Any?) {
+        showQuickCapture()
+    }
+
+    @objc func showCalendarFromMenu(_ sender: Any?) {
+        model?.selectedSection = .calendar
+        showMainWindow()
     }
 
     private func buildWindow(model: DashboardModel) {
@@ -60,30 +94,163 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         let contentRect = visibleFrame.insetBy(dx: max(24, visibleFrame.width * 0.035), dy: max(24, visibleFrame.height * 0.05))
         let window = NSWindow(
             contentRect: contentRect,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Darktime"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = .white
         window.minSize = NSSize(width: 1060, height: 680)
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.appearance = NSAppearance(named: .aqua)
         window.contentView = NSHostingView(rootView: DarktimeDashboard(model: model))
 
         self.window = window
         window.makeKeyAndOrderFront(nil)
     }
+
+    private func showMainWindow() {
+        if window == nil, let model {
+            buildWindow(model: model)
+        }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func registerQuickCaptureHotKey() {
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let selfPointer = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, userData in
+                guard let userData else {
+                    return noErr
+                }
+
+                var hotKeyID = EventHotKeyID()
+                let result = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+                guard result == noErr, hotKeyID.id == 1 else {
+                    return noErr
+                }
+
+                let appDelegate = Unmanaged<CalendarAppDelegate>.fromOpaque(userData).takeUnretainedValue()
+                DispatchQueue.main.async {
+                    appDelegate.showQuickCapture()
+                }
+                return noErr
+            },
+            1,
+            &eventType,
+            selfPointer,
+            &eventHandlerRef
+        )
+
+        let hotKeyID = EventHotKeyID(signature: fourCharCode("DTQC"), id: 1)
+        RegisterEventHotKey(
+            UInt32(kVK_Space),
+            UInt32(controlKey | optionKey),
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+    }
+
+    private func showQuickCapture() {
+        guard let model else {
+            return
+        }
+
+        let panel = quickCaptureWindow ?? makeQuickCaptureWindow()
+        quickCaptureWindow = panel
+        panel.contentView = NSHostingView(
+            rootView: QuickCapturePanel(model: model) { [weak self] in
+                self?.quickCaptureWindow?.orderOut(nil)
+            }
+        )
+
+        if let screen = NSScreen.main {
+            let size = panel.frame.size
+            let frame = screen.visibleFrame
+            panel.setFrameOrigin(NSPoint(
+                x: frame.midX - size.width / 2,
+                y: frame.maxY - size.height - 96
+            ))
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    private func makeQuickCaptureWindow() -> NSPanel {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 108),
+            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient]
+        panel.isReleasedWhenClosed = false
+        panel.appearance = NSAppearance(named: .aqua)
+        return panel
+    }
+}
+
+private enum WorkspaceSection: String, CaseIterable, Identifiable {
+    case capture
+    case inbox
+    case rootbox
+    case calendar
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .capture: return "Capture"
+        case .inbox: return "Inbox"
+        case .rootbox: return "Rootbox"
+        case .calendar: return "Calendar"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .capture: return "square.and.pencil"
+        case .inbox: return "tray.fill"
+        case .rootbox: return "tree.fill"
+        case .calendar: return "calendar"
+        }
+    }
 }
 
 @MainActor
 private final class DashboardModel: ObservableObject {
+    @Published var selectedSection: WorkspaceSection = .capture
     @Published var authorizationStatus = "checking"
     @Published var canReadWrite = false
     @Published var calendars: [CalendarSnapshot] = []
     @Published var sessions: [MCPSessionSnapshot] = []
-    @Published var actions: [ActionLogSnapshot] = []
+    @Published var matters: [MatterSnapshot] = []
     @Published var storageReady = false
     @Published var storageError: String?
-    @Published var lastRefreshed: Date?
     @Published var isRequestingAccess = false
     @Published var copiedCommand = false
 
@@ -109,14 +276,17 @@ private final class DashboardModel: ObservableObject {
         storageReady
     }
 
-    var lastActivity: ActionLogSnapshot? {
-        actions.first
+    var inboxMatters: [MatterSnapshot] {
+        matters.filter { $0.status == "inbox" }
+    }
+
+    var rootboxMatters: [MatterSnapshot] {
+        matters.filter { $0.status == "rootbox" }
     }
 
     func refresh() {
         refreshStorage()
         refreshCalendar()
-        lastRefreshed = Date()
     }
 
     func requestAccess() async {
@@ -138,6 +308,39 @@ private final class DashboardModel: ObservableObject {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
             self?.copiedCommand = false
+        }
+    }
+
+    func capture(text: String, source: String = "manual", revealInbox: Bool = false) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+
+        do {
+            _ = try DarktimeStorage.createMatter(text: trimmed, source: source)
+            if revealInbox {
+                selectedSection = .inbox
+            }
+            refresh()
+        } catch {
+            storageReady = false
+            storageError = String(describing: error)
+        }
+    }
+
+    func moveMatter(_ matter: MatterSnapshot, to status: String) {
+        do {
+            _ = try DarktimeStorage.updateMatterStatus(id: matter.id, status: status)
+            if status == "rootbox" {
+                selectedSection = .rootbox
+            } else if status == "dropped" || status == "done" || status == "later" {
+                selectedSection = .inbox
+            }
+            refresh()
+        } catch {
+            storageReady = false
+            storageError = String(describing: error)
         }
     }
 
@@ -166,13 +369,14 @@ private final class DashboardModel: ObservableObject {
     private func refreshStorage() {
         do {
             try DarktimeStorage.ensureDatabase()
+            _ = try DarktimeStorage.importShortcutInbox()
             sessions = try DarktimeStorage.recentSessions(limit: 12)
-            actions = try DarktimeStorage.recentActions(limit: 42)
+            matters = try DarktimeStorage.recentMatters(limit: 180)
             storageReady = true
             storageError = nil
         } catch {
             sessions = []
-            actions = []
+            matters = []
             storageReady = false
             storageError = String(describing: error)
         }
@@ -201,91 +405,689 @@ private final class DashboardModel: ObservableObject {
 
 private struct DarktimeDashboard: View {
     @ObservedObject var model: DashboardModel
+    @AppStorage("darktime.sidebarWidth") private var storedSidebarWidth = 230.0
+    @State private var draggingSidebarWidth: Double?
     private let refreshTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    private let minSidebarWidth = 190.0
+    private let maxSidebarWidth = 340.0
 
     var body: some View {
         ZStack {
-            DTColor.background.ignoresSafeArea()
-            VStack(spacing: 0) {
-                header
-                Divider().overlay(DTColor.line)
-                GeometryReader { geometry in
-                    let rightWidth = min(450, max(380, geometry.size.width * 0.34))
-                    let leftWidth = min(330, max(292, geometry.size.width * 0.26))
-
-                    HStack(alignment: .top, spacing: 16) {
-                        SourcesPanel(model: model)
-                            .frame(width: leftWidth)
-                        VStack(spacing: 16) {
-                            StatusPanel(model: model)
-                            AgentsPanel(model: model)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        ActivityPanel(model: model)
-                            .frame(width: rightWidth)
+            DTColor.workspace.ignoresSafeArea()
+            HStack(spacing: 0) {
+                WorkspaceRail(model: model)
+                    .frame(width: CGFloat(sidebarWidth))
+                    .frame(maxHeight: .infinity)
+                    .overlay(alignment: .trailing) {
+                        SidebarResizeHandle(
+                            currentWidth: sidebarWidth,
+                            minWidth: minSidebarWidth,
+                            maxWidth: maxSidebarWidth,
+                            onChange: { draggingSidebarWidth = $0 },
+                            onEnd: { width in
+                                storedSidebarWidth = width
+                                draggingSidebarWidth = nil
+                            }
+                        )
+                        .frame(width: 10)
+                        .frame(maxHeight: .infinity)
                     }
-                    .padding(20)
-                }
+
+                workspace
+                    .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .background(DTColor.workspace)
             }
+            .ignoresSafeArea(.container, edges: .top)
         }
+        .font(.system(size: 13, weight: .regular, design: .default))
         .foregroundStyle(DTColor.text)
         .onReceive(refreshTimer) { _ in
             model.refresh()
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 18) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Darktime")
-                    .font(.system(size: 26, weight: .semibold))
-                Text("Local time control for agent calendar access")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DTColor.muted)
+    private var sidebarWidth: Double {
+        min(max(draggingSidebarWidth ?? storedSidebarWidth, minSidebarWidth), maxSidebarWidth)
+    }
+
+    @ViewBuilder
+    private var workspace: some View {
+        switch model.selectedSection {
+        case .capture:
+            CaptureWorkspace(model: model)
+        case .inbox:
+            InboxWorkspace(model: model)
+        case .rootbox:
+            RootboxWorkspace(model: model)
+        case .calendar:
+            CalendarWorkspace(model: model)
+        }
+    }
+}
+
+private struct SidebarResizeHandle: NSViewRepresentable {
+    let currentWidth: Double
+    let minWidth: Double
+    let maxWidth: Double
+    let onChange: (Double) -> Void
+    let onEnd: (Double) -> Void
+
+    func makeNSView(context: Context) -> SidebarResizeHandleView {
+        SidebarResizeHandleView()
+    }
+
+    func updateNSView(_ nsView: SidebarResizeHandleView, context: Context) {
+        nsView.currentWidth = currentWidth
+        nsView.minWidth = minWidth
+        nsView.maxWidth = maxWidth
+        nsView.onChange = onChange
+        nsView.onEnd = onEnd
+        nsView.needsDisplay = true
+    }
+}
+
+private final class SidebarResizeHandleView: NSView {
+    var currentWidth = 230.0
+    var minWidth = 190.0
+    var maxWidth = 340.0
+    var onChange: ((Double) -> Void)?
+    var onEnd: ((Double) -> Void)?
+
+    private var dragStartWidth = 230.0
+    private var dragStartX = 0.0
+    private var isHovering = false
+    private var trackingAreaRef: NSTrackingArea?
+
+    override var mouseDownCanMoveWindow: Bool {
+        false
+    }
+
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingAreaRef {
+            removeTrackingArea(trackingAreaRef)
+        }
+
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        trackingAreaRef = area
+        addTrackingArea(area)
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
+        needsDisplay = true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        dragStartWidth = currentWidth
+        dragStartX = Double(event.locationInWindow.x)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let proposed = dragStartWidth + Double(event.locationInWindow.x) - dragStartX
+        onChange?(clamped(proposed))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let proposed = dragStartWidth + Double(event.locationInWindow.x) - dragStartX
+        onEnd?(clamped(proposed))
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let alpha: CGFloat = isHovering ? 0.13 : 0.075
+        NSColor.black.withAlphaComponent(alpha).setFill()
+        NSRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height).fill()
+    }
+
+    private func clamped(_ value: Double) -> Double {
+        min(max(value, minWidth), maxWidth)
+    }
+}
+
+private struct WorkspaceRail: View {
+    @ObservedObject var model: DashboardModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            railButton(for: .capture)
+
+            VStack(alignment: .leading, spacing: 6) {
+                railButton(for: .inbox)
+                railButton(for: .rootbox)
             }
+            .padding(.top, 26)
 
             Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 54)
+        .padding(.bottom, 18)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(DTColor.sidebar)
+    }
 
-            HStack(spacing: 8) {
-                StatusPill(
-                    title: model.canReadWrite ? "Calendar ready" : "Needs access",
-                    systemImage: model.canReadWrite ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
-                    tint: model.canReadWrite ? DTColor.green : DTColor.amber
-                )
-                StatusPill(
-                    title: model.serviceReady ? "MCP stdio" : "Storage issue",
-                    systemImage: model.serviceReady ? "terminal.fill" : "xmark.octagon.fill",
-                    tint: model.serviceReady ? DTColor.cyan : DTColor.red
-                )
+    private func railButton(for section: WorkspaceSection) -> some View {
+        RailItemButton(
+            section: section,
+            isSelected: model.selectedSection == section,
+            count: count(for: section)
+        ) {
+            model.selectedSection = section
+        }
+    }
+
+    private func count(for section: WorkspaceSection) -> Int? {
+        switch section {
+        case .capture: return nil
+        case .inbox: return model.inboxMatters.count
+        case .rootbox: return model.rootboxMatters.count
+        case .calendar: return nil
+        }
+    }
+}
+
+private struct RailItemButton: View {
+    let section: WorkspaceSection
+    let isSelected: Bool
+    let count: Int?
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: section.systemImage)
+                    .font(.system(size: 15, weight: .regular))
+                    .frame(width: 18)
+                Text(section.title)
+                    .font(.system(size: 15, weight: .regular, design: .default))
+                Spacer()
+                if let count, count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .semibold, design: .default))
+                        .foregroundStyle(isSelected ? DTColor.text : DTColor.dimmed)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(DTColor.workspace.opacity(0.78))
+                        .clipShape(Capsule())
+                }
             }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(isSelected ? DTColor.text : DTColor.muted)
+            .background(isSelected || isHovering ? DTColor.sidebarSelection : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+    }
+}
 
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("Auto refresh: 2s")
-                    .font(.system(size: 11, weight: .medium))
+private struct CaptureWorkspace: View {
+    @ObservedObject var model: DashboardModel
+    @State private var draft = ""
+    @State private var savedMessage: String?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        ZStack {
+            DTColor.workspace
+
+            VStack(spacing: 38) {
+                Text("What matters right now?")
+                    .font(.system(size: 30, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.text)
+
+                VStack(spacing: 0) {
+                    TextField("Capture it.", text: $draft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 15, weight: .regular, design: .default))
+                        .foregroundStyle(DTColor.text)
+                        .lineLimit(1...4)
+                        .focused($focused)
+                        .onSubmit(save)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 16)
+                        .padding(.bottom, 8)
+                        .frame(minHeight: 52, alignment: .topLeading)
+
+                    HStack(alignment: .center, spacing: 10) {
+                        if let savedMessage {
+                            Label(savedMessage, systemImage: "checkmark.circle.fill")
+                                .font(.system(size: 12, weight: .medium, design: .default))
+                                .foregroundStyle(DTColor.green)
+                                .transition(.opacity)
+                        } else {
+                            Label("Inbox", systemImage: "tray")
+                                .font(.system(size: 12, weight: .medium, design: .default))
+                                .foregroundStyle(DTColor.dimmed)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            save()
+                        } label: {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color.white)
+                                .frame(width: 32, height: 32)
+                                .background(canSave ? DTColor.text : DTColor.dimmed.opacity(0.45))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .keyboardShortcut(.return, modifiers: [.command])
+                        .disabled(!canSave)
+                        .help("Capture")
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+                }
+                .frame(maxWidth: 760, minHeight: 104)
+                .background(DTColor.panel)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(DTColor.inputBorder, lineWidth: 1.25)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .shadow(color: Color.black.opacity(0.08), radius: 22, x: 0, y: 10)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .padding(.horizontal, 56)
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                focused = true
+            }
+        }
+    }
+
+    private var canSave: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func save() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+
+        model.capture(text: trimmed, source: "manual", revealInbox: false)
+        draft = ""
+
+        withAnimation(.easeOut(duration: 0.18)) {
+            savedMessage = "Captured to Inbox"
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.easeOut(duration: 0.18)) {
+                savedMessage = nil
+            }
+        }
+    }
+}
+
+private struct InboxWorkspace: View {
+    @ObservedObject var model: DashboardModel
+
+    var body: some View {
+        MatterWorkspace(
+            systemImage: "tray.fill",
+            title: "Inbox",
+            detail: "Captured matters, waiting to be cleared.",
+            matters: model.inboxMatters,
+            emptyTitle: "Inbox is clear",
+            emptyDetail: "Use quick capture to unload the next open loop.",
+            model: model
+        )
+    }
+}
+
+private struct RootboxWorkspace: View {
+    @ObservedObject var model: DashboardModel
+
+    var body: some View {
+        MatterWorkspace(
+            systemImage: "tree.fill",
+            title: "Rootbox",
+            detail: "Matters worth keeping and returning to.",
+            matters: model.rootboxMatters,
+            emptyTitle: "Rootbox is empty",
+            emptyDetail: "Clear the inbox and keep only the few things worth returning to.",
+            model: model
+        )
+    }
+}
+
+private struct MatterWorkspace: View {
+    let systemImage: String
+    let title: String
+    let detail: String
+    let matters: [MatterSnapshot]
+    let emptyTitle: String
+    let emptyDetail: String
+    @ObservedObject var model: DashboardModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            WorkspaceTopBar(systemImage: systemImage, title: title, detail: detail)
+            Divider().overlay(DTColor.line.opacity(0.7))
+
+            MatterList(
+                matters: matters,
+                emptyTitle: emptyTitle,
+                emptyDetail: emptyDetail,
+                model: model
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(DTColor.workspace)
+    }
+}
+
+private struct WorkspaceTopBar: View {
+    let systemImage: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DTColor.muted)
+                .frame(width: 18)
+            Text(title)
+                .font(.system(size: 13, weight: .semibold, design: .default))
+                .foregroundStyle(DTColor.text)
+            Text(detail)
+                .font(.system(size: 12, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.muted)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 46)
+        .background(DTColor.workspace)
+    }
+}
+
+private struct CalendarWorkspace: View {
+    @ObservedObject var model: DashboardModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                WorkspaceTitle(
+                    title: "Calendar",
+                    detail: "Apple Calendar and local MCP service remain available as a secondary surface.",
+                    systemImage: "calendar"
+                )
+                HStack(alignment: .top, spacing: 16) {
+                    SourcesPanel(model: model)
+                        .frame(width: 320)
+                    VStack(spacing: 16) {
+                        StatusPanel(model: model)
+                        AgentsPanel(model: model)
+                            .frame(minHeight: 220)
+                    }
+                }
+            }
+            .padding(20)
+        }
+    }
+}
+
+private struct WorkspaceTitle: View {
+    let title: String
+    let detail: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(DTColor.cyan)
+                .frame(width: 34, height: 34)
+                .background(DTColor.cyan.opacity(0.11))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 22, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 13))
                     .foregroundStyle(DTColor.muted)
-                Text(model.lastRefreshed.map(formatClock) ?? "Not refreshed")
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+            }
+            Spacer()
+        }
+    }
+}
+
+private struct MatterList: View {
+    let matters: [MatterSnapshot]
+    let emptyTitle: String
+    let emptyDetail: String
+    @ObservedObject var model: DashboardModel
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                if matters.isEmpty {
+                    EmptyStateLine(systemImage: "tray", title: emptyTitle, detail: emptyDetail)
+                } else {
+                    LazyVStack(spacing: 10) {
+                        ForEach(matters, id: \.id) { matter in
+                            MatterRow(model: model, matter: matter)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 36)
+            .padding(.top, 26)
+            .padding(.bottom, 30)
+        }
+        .background(DTColor.workspace)
+    }
+}
+
+private struct MatterRow: View {
+    @ObservedObject var model: DashboardModel
+    let matter: MatterSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: icon(for: matter.status))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(tint(for: matter.status))
+                    .frame(width: 30, height: 30)
+                    .background(tint(for: matter.status).opacity(0.11))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(matter.text)
+                        .font(.system(size: 13, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 7) {
+                        TinyTag(text: matter.status, tint: tint(for: matter.status))
+                        Text(matter.source)
+                            .font(.system(size: 11))
+                            .foregroundStyle(DTColor.dimmed)
+                        Text(formatRelative(matter.updatedAt))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(DTColor.dimmed)
+                    }
+                }
+                Spacer()
+            }
+            if matter.status == "rootbox" {
+                RootboxActionBar(model: model, matter: matter)
+            } else {
+                InboxClearActionBar(model: model, matter: matter)
+            }
+        }
+        .padding(12)
+        .background(DTColor.row)
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(DTColor.line, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+
+    private func icon(for status: String) -> String {
+        switch status {
+        case "rootbox": return "tree.fill"
+        case "today": return "sun.max.fill"
+        case "later": return "clock.fill"
+        case "done": return "checkmark.circle.fill"
+        case "dropped": return "xmark.circle.fill"
+        default: return "tray.fill"
+        }
+    }
+
+    private func tint(for status: String) -> Color {
+        switch status {
+        case "rootbox": return DTColor.green
+        case "today": return DTColor.amber
+        case "later": return DTColor.cyan
+        case "done": return DTColor.green
+        case "dropped": return DTColor.dimmed
+        default: return DTColor.cyan
+        }
+    }
+}
+
+private struct InboxClearActionBar: View {
+    @ObservedObject var model: DashboardModel
+    let matter: MatterSnapshot
+
+    var body: some View {
+        HStack(spacing: 8) {
+            action("Drop", "xmark", "dropped", tint: DTColor.dimmed)
+            action("Later", "clock", "later", tint: DTColor.cyan)
+            action("Done", "checkmark", "done", tint: DTColor.green)
+            action("Rootbox", "tree", "rootbox", tint: DTColor.green)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    private func action(_ title: String, _ image: String, _ status: String, tint: Color) -> some View {
+        Button {
+            model.moveMatter(matter, to: status)
+        } label: {
+            Label(title, systemImage: image)
+        }
+        .disabled(matter.status == status)
+        .tint(tint)
+    }
+}
+
+private struct RootboxActionBar: View {
+    @ObservedObject var model: DashboardModel
+    let matter: MatterSnapshot
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                model.moveMatter(matter, to: "inbox")
+            } label: {
+                Label("Move to Inbox", systemImage: "tray")
+            }
+            .tint(DTColor.cyan)
+
+            Button {
+                model.moveMatter(matter, to: "dropped")
+            } label: {
+                Label("Drop", systemImage: "xmark")
+            }
+            .tint(DTColor.dimmed)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+}
+
+private struct QuickCapturePanel: View {
+    @ObservedObject var model: DashboardModel
+    let onClose: () -> Void
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "bolt.fill")
+                    .foregroundStyle(DTColor.cyan)
+                Text("Quick Capture")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text("Control + Option + Space")
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(DTColor.dimmed)
             }
-
-            Button {
-                model.refresh()
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
+            HStack(spacing: 10) {
+                TextField("One line. No labels. No decision yet.", text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 18))
+                    .focused($focused)
+                    .onSubmit(save)
+                Button {
+                    save()
+                } label: {
+                    Label("Save", systemImage: "tray.and.arrow.down.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DTColor.accent)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .buttonStyle(.bordered)
-
-            Button {
-                Task { await model.requestAccess() }
-            } label: {
-                Label(model.canReadWrite ? "Connected" : "Connect", systemImage: model.canReadWrite ? "lock.open.fill" : "lock.fill")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(model.canReadWrite || model.isRequestingAccess)
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 16)
+        .padding(16)
         .background(DTColor.header)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                focused = true
+            }
+        }
+        .onExitCommand {
+            onClose()
+        }
+    }
+
+    private func save() {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            onClose()
+            return
+        }
+        model.capture(text: trimmed, source: "quick_capture")
+        text = ""
+        onClose()
     }
 }
 
@@ -372,13 +1174,6 @@ private struct StatusPanel: View {
                         tint: model.storageReady ? DTColor.green : DTColor.red,
                         systemImage: "cylinder.split.1x2"
                     )
-                    MetricTile(
-                        title: "Last Action",
-                        value: model.lastActivity?.status ?? "none",
-                        detail: model.lastActivity.map { formatRelative($0.createdAt) } ?? "waiting",
-                        tint: model.lastActivity.map(statusColor) ?? DTColor.dimmed,
-                        systemImage: "waveform.path.ecg"
-                    )
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -440,32 +1235,6 @@ private struct AgentsPanel: View {
     }
 }
 
-private struct ActivityPanel: View {
-    @ObservedObject var model: DashboardModel
-
-    var body: some View {
-        Pane(title: "Activity", systemImage: "list.bullet.rectangle") {
-            if model.actions.isEmpty {
-                EmptyStateLine(
-                    systemImage: "clock.badge.questionmark",
-                    title: "No recorded activity",
-                    detail: "MCP reads and writes will appear here automatically."
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(model.actions, id: \.id) { action in
-                            ActivityRow(action: action)
-                        }
-                    }
-                    .padding(.trailing, 2)
-                }
-            }
-        }
-    }
-}
-
 private struct Pane<Content: View>: View {
     let title: String
     let systemImage: String
@@ -491,25 +1260,6 @@ private struct Pane<Content: View>: View {
                 .stroke(DTColor.line, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-private struct StatusPill: View {
-    let title: String
-    let systemImage: String
-    let tint: Color
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-            Text(title)
-        }
-        .font(.system(size: 12, weight: .semibold))
-        .foregroundStyle(tint)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(tint.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 
@@ -711,56 +1461,6 @@ private struct AgentRow: View {
     }
 }
 
-private struct ActivityRow: View {
-    let action: ActionLogSnapshot
-
-    var body: some View {
-        let presentation = activityPresentation(action)
-
-        HStack(alignment: .top, spacing: 11) {
-            Image(systemName: presentation.systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(presentation.tint)
-                .frame(width: 30, height: 30)
-                .background(presentation.tint.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 7))
-
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(presentation.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text(formatRelative(action.createdAt))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(DTColor.dimmed)
-                }
-
-                Text(presentation.detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(DTColor.muted)
-                    .lineLimit(2)
-
-                HStack(spacing: 7) {
-                    TinyTag(text: action.isWrite ? "WRITE" : "READ", tint: action.isWrite ? DTColor.amber : DTColor.cyan)
-                    TinyTag(text: action.status, tint: presentation.tint)
-                    Text(action.clientName ?? "agent")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(DTColor.dimmed)
-                        .lineLimit(1)
-                }
-            }
-        }
-        .padding(11)
-        .background(DTColor.row)
-        .overlay(
-            RoundedRectangle(cornerRadius: 7)
-                .stroke(action.isWrite ? DTColor.amber.opacity(0.22) : DTColor.line, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 7))
-    }
-}
-
 private struct TinyTag: View {
     let text: String
     let tint: Color
@@ -831,148 +1531,23 @@ private struct SignalDot: View {
 }
 
 private enum DTColor {
-    static let background = Color(red: 0.055, green: 0.058, blue: 0.066)
-    static let header = Color(red: 0.078, green: 0.082, blue: 0.094)
-    static let panel = Color(red: 0.095, green: 0.1, blue: 0.115)
-    static let row = Color(red: 0.125, green: 0.13, blue: 0.148)
-    static let codeBackground = Color(red: 0.048, green: 0.051, blue: 0.06)
-    static let line = Color.white.opacity(0.08)
-    static let text = Color.white.opacity(0.9)
-    static let muted = Color.white.opacity(0.64)
-    static let dimmed = Color.white.opacity(0.42)
-    static let green = Color(red: 0.42, green: 0.86, blue: 0.62)
-    static let cyan = Color(red: 0.35, green: 0.78, blue: 0.95)
-    static let amber = Color(red: 0.94, green: 0.67, blue: 0.26)
-    static let red = Color(red: 0.95, green: 0.38, blue: 0.42)
-}
-
-private struct ActivityPresentation {
-    let title: String
-    let detail: String
-    let systemImage: String
-    let tint: Color
-}
-
-private func activityPresentation(_ action: ActionLogSnapshot) -> ActivityPresentation {
-    let tint = statusColor(action.status)
-    let request = jsonDictionary(action.requestJson)
-
-    switch action.action {
-    case "server_started":
-        return ActivityPresentation(
-            title: "MCP session started",
-            detail: action.summary ?? "A local stdio MCP process was launched.",
-            systemImage: "play.circle.fill",
-            tint: DTColor.cyan
-        )
-    case "calendar_authorization_status":
-        return ActivityPresentation(
-            title: "Checked calendar permission",
-            detail: action.summary ?? "Apple Calendar permission status was requested.",
-            systemImage: "lock.open.fill",
-            tint: tint
-        )
-    case "calendar_list_calendars":
-        return ActivityPresentation(
-            title: "Listed calendars",
-            detail: action.summary ?? "Apple Calendar source list was requested.",
-            systemImage: "calendar",
-            tint: tint
-        )
-    case "calendar_list_events":
-        return ActivityPresentation(
-            title: "Read calendar events",
-            detail: rangeDetail(from: request) ?? action.summary ?? "Calendar events were read.",
-            systemImage: "calendar.day.timeline.left",
-            tint: tint
-        )
-    case "calendar_find_free_slots":
-        return ActivityPresentation(
-            title: "Found free slots",
-            detail: rangeDetail(from: request) ?? action.summary ?? "Free time was calculated.",
-            systemImage: "clock.badge.checkmark",
-            tint: tint
-        )
-    case "calendar_create_event":
-        return ActivityPresentation(
-            title: "Created event",
-            detail: eventDetail(from: request) ?? action.summary ?? "A calendar event was created.",
-            systemImage: "calendar.badge.plus",
-            tint: tint
-        )
-    case "calendar_update_event":
-        return ActivityPresentation(
-            title: "Updated event",
-            detail: eventDetail(from: request) ?? action.summary ?? "A calendar event was updated.",
-            systemImage: "calendar.badge.clock",
-            tint: tint
-        )
-    case "calendar_delete_event":
-        return ActivityPresentation(
-            title: "Deleted event",
-            detail: stringValue(request["eventId"]) ?? action.summary ?? "A calendar event was deleted.",
-            systemImage: "calendar.badge.minus",
-            tint: tint
-        )
-    default:
-        return ActivityPresentation(
-            title: humanizeAction(action.action),
-            detail: action.errorMessage ?? action.summary ?? action.source,
-            systemImage: action.isWrite ? "pencil" : "eye",
-            tint: tint
-        )
-    }
-}
-
-private func eventDetail(from request: [String: Any]) -> String? {
-    guard let title = stringValue(request["title"]) else {
-        return rangeDetail(from: request)
-    }
-
-    let range = rangeDetail(from: request)
-    return range.map { "\"\(title)\" | \($0)" } ?? "\"\(title)\""
-}
-
-private func rangeDetail(from request: [String: Any]) -> String? {
-    guard let start = stringValue(request["start"]) else {
-        return nil
-    }
-
-    if let end = stringValue(request["end"]) {
-        return "\(formatLocalDateTime(start)) - \(formatLocalTime(end))"
-    }
-
-    return formatLocalDateTime(start)
-}
-
-private func jsonDictionary(_ text: String?) -> [String: Any] {
-    guard
-        let text,
-        let data = text.data(using: .utf8),
-        let object = try? JSONSerialization.jsonObject(with: data),
-        let dictionary = object as? [String: Any]
-    else {
-        return [:]
-    }
-    return dictionary
-}
-
-private func stringValue(_ value: Any?) -> String? {
-    guard let value = value as? String, !value.isEmpty else {
-        return nil
-    }
-    return value
-}
-
-private func humanizeAction(_ action: String) -> String {
-    action
-        .split(separator: "_")
-        .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-        .joined(separator: " ")
-}
-
-private func statusColor(_ action: ActionLogSnapshot) -> Color {
-    statusColor(action.status)
+    static let workspace = Color.white
+    static let sidebar = Color(red: 0.93, green: 0.935, blue: 0.94).opacity(0.86)
+    static let sidebarSelection = Color.black.opacity(0.065)
+    static let header = Color(red: 0.985, green: 0.985, blue: 0.975)
+    static let panel = Color.white
+    static let row = Color(red: 0.955, green: 0.955, blue: 0.955)
+    static let codeBackground = Color(red: 0.94, green: 0.94, blue: 0.94)
+    static let line = Color.black.opacity(0.075)
+    static let inputBorder = Color.black.opacity(0.14)
+    static let text = Color.black.opacity(0.86)
+    static let muted = Color.black.opacity(0.58)
+    static let dimmed = Color.black.opacity(0.36)
+    static let accent = Color.black.opacity(0.82)
+    static let green = Color(red: 0.18, green: 0.48, blue: 0.28)
+    static let cyan = Color(red: 0.19, green: 0.36, blue: 0.56)
+    static let amber = Color(red: 0.68, green: 0.42, blue: 0.12)
+    static let red = Color(red: 0.68, green: 0.18, blue: 0.18)
 }
 
 private func statusColor(_ status: String) -> Color {
@@ -986,12 +1561,6 @@ private func statusColor(_ status: String) -> Color {
     default:
         return DTColor.cyan
     }
-}
-
-private func formatClock(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "HH:mm:ss"
-    return formatter.string(from: date)
 }
 
 private func formatRelative(_ isoString: String) -> String {
@@ -1062,4 +1631,12 @@ private extension Color {
         let blue = Double(value & 0xff) / 255.0
         self = Color(red: red, green: green, blue: blue)
     }
+}
+
+private func fourCharCode(_ value: String) -> OSType {
+    var result: OSType = 0
+    for scalar in value.unicodeScalars.prefix(4) {
+        result = (result << 8) + OSType(scalar.value)
+    }
+    return result
 }

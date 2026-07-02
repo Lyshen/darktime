@@ -40,12 +40,14 @@ type ToolResult = {
 };
 
 type ActionStatus = "started" | "success" | "error" | "blocked";
+type MatterStatus = "inbox" | "today" | "later" | "done" | "dropped" | "rootbox";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(moduleDir, "..");
 const sessionId = randomUUID();
 const clientName = process.env.DARKTIME_MCP_CLIENT_NAME || "MCP stdio client";
 const clientVersion = process.env.DARKTIME_MCP_CLIENT_VERSION || null;
+const matterStatuses = ["inbox", "today", "later", "done", "dropped", "rootbox"] as const;
 
 const server = new McpServer({
   name: "darktime",
@@ -86,6 +88,54 @@ server.registerTool(
   async () => withToolLogging("calendar_list_calendars", false, {}, async () =>
     textResult(await runBridge("list-calendars"))
   )
+);
+
+server.registerTool(
+  "matter_create",
+  {
+    title: "Create Matter",
+    description: "Capture a Matter into Darktime Inbox. Use this for lightweight open loops, not confirmed calendar events.",
+    inputSchema: {
+      text: z.string().min(1).describe("One captured thought, open loop, or attention item."),
+      source: z.string().optional().describe("Optional source label. Defaults to mcp.")
+    }
+  },
+  async ({ text, source }) =>
+    withToolLogging("matter_create", true, { text, source }, async () =>
+      textResult(await createMatter(text, source || "mcp"))
+    )
+);
+
+server.registerTool(
+  "matter_list",
+  {
+    title: "List Matters",
+    description: "List Darktime Matters, optionally filtered by status.",
+    inputSchema: {
+      status: z.enum(matterStatuses).optional(),
+      limit: z.number().int().positive().max(200).optional()
+    }
+  },
+  async ({ status, limit }) =>
+    withToolLogging("matter_list", false, { status, limit }, async () =>
+      textResult(await listMatters(status, limit ?? 60))
+    )
+);
+
+server.registerTool(
+  "matter_update_status",
+  {
+    title: "Update Matter Status",
+    description: "Move a Darktime Matter between Inbox, Clear outcomes, and Rootbox.",
+    inputSchema: {
+      id: z.string().min(1),
+      status: z.enum(matterStatuses)
+    }
+  },
+  async ({ id, status }) =>
+    withToolLogging("matter_update_status", true, { id, status }, async () =>
+      textResult(await updateMatterStatus(id, status))
+    )
 );
 
 server.registerTool(
@@ -344,11 +394,159 @@ async function initializeStorage(): Promise<void> {
         request_json TEXT,
         response_json TEXT
       );
+      CREATE TABLE IF NOT EXISTS matters (
+        id TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        status TEXT NOT NULL,
+        source TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        raw_payload_json TEXT
+      );
+      CREATE TABLE IF NOT EXISTS matter_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        matter_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        action TEXT NOT NULL,
+        from_status TEXT,
+        to_status TEXT,
+        summary TEXT,
+        metadata_json TEXT,
+        FOREIGN KEY (matter_id) REFERENCES matters(id)
+      );
       CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_seen ON mcp_sessions(last_seen_at DESC);
       CREATE INDEX IF NOT EXISTS idx_action_logs_created_at ON action_logs(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_action_logs_session_id ON action_logs(session_id);
+      CREATE INDEX IF NOT EXISTS idx_matters_status_updated ON matters(status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_matters_created_at ON matters(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_matter_logs_created_at ON matter_logs(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_matter_logs_matter_id ON matter_logs(matter_id);
     `);
   });
+}
+
+async function createMatter(text: string, source: string): Promise<Record<string, unknown>> {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("Matter text cannot be empty.");
+  }
+
+  const id = randomUUID();
+  const now = isoNow();
+  await sqliteExec(`
+    BEGIN TRANSACTION;
+    INSERT INTO matters (
+      id,
+      text,
+      status,
+      source,
+      created_at,
+      updated_at,
+      raw_payload_json
+    ) VALUES (
+      ${sqlValue(id)},
+      ${sqlValue(trimmed)},
+      'inbox',
+      ${sqlValue(source || "mcp")},
+      ${sqlValue(now)},
+      ${sqlValue(now)},
+      NULL
+    );
+    INSERT INTO matter_logs (
+      matter_id,
+      created_at,
+      action,
+      to_status,
+      summary
+    ) VALUES (
+      ${sqlValue(id)},
+      ${sqlValue(now)},
+      'created',
+      'inbox',
+      'Captured to Inbox'
+    );
+    COMMIT;
+  `);
+
+  return {
+    id,
+    text: trimmed,
+    status: "inbox",
+    source: source || "mcp",
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+async function listMatters(status: MatterStatus | undefined, limit: number): Promise<unknown[]> {
+  const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
+  const where = status ? `WHERE status = ${sqlValue(status)}` : "";
+  return sqliteQueryJson(`
+    SELECT
+      id,
+      text,
+      status,
+      source,
+      created_at AS createdAt,
+      updated_at AS updatedAt,
+      raw_payload_json AS rawPayloadJson
+    FROM matters
+    ${where}
+    ORDER BY updated_at DESC
+    LIMIT ${safeLimit};
+  `);
+}
+
+async function updateMatterStatus(id: string, status: MatterStatus): Promise<Record<string, unknown>> {
+  const rows = await sqliteQueryJson(`
+    SELECT
+      id,
+      text,
+      status,
+      source,
+      created_at AS createdAt,
+      updated_at AS updatedAt,
+      raw_payload_json AS rawPayloadJson
+    FROM matters
+    WHERE id = ${sqlValue(id)}
+    LIMIT 1;
+  `) as Array<Record<string, unknown>>;
+
+  const current = rows[0];
+  if (!current) {
+    throw new Error(`Matter ${id} was not found.`);
+  }
+
+  const now = isoNow();
+  await sqliteExec(`
+    BEGIN TRANSACTION;
+    UPDATE matters
+    SET status = ${sqlValue(status)},
+        updated_at = ${sqlValue(now)}
+    WHERE id = ${sqlValue(id)};
+    INSERT INTO matter_logs (
+      matter_id,
+      created_at,
+      action,
+      from_status,
+      to_status,
+      summary
+    ) VALUES (
+      ${sqlValue(id)},
+      ${sqlValue(now)},
+      'status_changed',
+      ${sqlValue(String(current.status || ""))},
+      ${sqlValue(status)},
+      ${sqlValue(`Moved from ${String(current.status || "unknown")} to ${status}`)}
+    );
+    COMMIT;
+  `);
+
+  return {
+    ...current,
+    status,
+    updatedAt: now
+  };
 }
 
 async function recordSessionStarted(): Promise<void> {
@@ -434,7 +632,7 @@ async function recordAction(input: {
         ${sqlValue(now)},
         ${sqlValue(sessionId)},
         ${sqlValue(clientName)},
-        'apple_calendar',
+        ${sqlValue(input.action.startsWith("matter_") ? "matter" : "apple_calendar")},
         ${sqlValue(input.action)},
         ${sqlValue(input.status)},
         ${input.isWrite ? 1 : 0},
@@ -469,6 +667,25 @@ async function sqliteExec(sql: string): Promise<void> {
   const { stdout, stderr, code } = await spawnAndCollect("sqlite3", [dbPath], sql);
   if (code !== 0) {
     throw new Error(`sqlite3 failed with code ${code}: ${stderr || stdout}`);
+  }
+}
+
+async function sqliteQueryJson(sql: string): Promise<unknown[]> {
+  const dbPath = darktimeDbPath();
+  const { stdout, stderr, code } = await spawnAndCollect("sqlite3", ["-json", dbPath, sql]);
+  if (code !== 0) {
+    throw new Error(`sqlite3 query failed with code ${code}: ${stderr || stdout}`);
+  }
+
+  if (!stdout.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(stdout);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    throw new Error(`sqlite3 returned invalid JSON: ${stdout}`);
   }
 }
 
@@ -543,6 +760,23 @@ function summarizeToolResult(action: string, result: ToolResult): string {
     const end = stringField(record, "end");
     const range = start && end ? `, ${formatRange(start, end)}` : "";
     return `${verb} "${title}" in ${calendarTitle}${range}`;
+  }
+
+  if (action === "matter_create") {
+    const record = asRecord(payload);
+    const text = stringField(record, "text") ?? "Matter";
+    return `Captured "${text.slice(0, 80)}" to Inbox`;
+  }
+
+  if (action === "matter_list" && Array.isArray(payload)) {
+    return `Listed ${payload.length} matters`;
+  }
+
+  if (action === "matter_update_status") {
+    const record = asRecord(payload);
+    const text = stringField(record, "text") ?? "Matter";
+    const status = stringField(record, "status") ?? "updated";
+    return `Moved "${text.slice(0, 80)}" to ${status}`;
   }
 
   return `${action}: ${text.replace(/\s+/g, " ").slice(0, 180)}`;
