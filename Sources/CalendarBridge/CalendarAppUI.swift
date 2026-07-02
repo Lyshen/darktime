@@ -1168,14 +1168,23 @@ private struct QuickCapturePanel: View {
             Label(message, systemImage: "checkmark.circle.fill")
                 .font(.system(size: 12, weight: .medium, design: .default))
                 .foregroundStyle(DTColor.green)
-        } else if !model.quickCaptureDraft.isEmpty {
-            Text("Draft saved · Esc to close")
-                .font(.system(size: 12, weight: .regular, design: .default))
-                .foregroundStyle(DTColor.dimmed)
         } else {
-            Text("Enter to capture · Esc to close")
-                .font(.system(size: 12, weight: .regular, design: .default))
-                .foregroundStyle(DTColor.dimmed)
+            HStack(spacing: 6) {
+                Text("Esc")
+                    .font(.system(size: 11, weight: .medium, design: .default))
+                    .foregroundStyle(DTColor.muted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(DTColor.row)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(DTColor.line, lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                Text("close")
+                    .font(.system(size: 12, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.dimmed)
+            }
         }
     }
 
