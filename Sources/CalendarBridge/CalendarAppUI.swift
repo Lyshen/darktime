@@ -178,7 +178,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         let panel = quickCaptureWindow ?? makeQuickCaptureWindow()
         quickCaptureWindow = panel
         panel.delegate = self
-        let hostingView = NSHostingView(
+        let hostingView = ClearHostingView(
             rootView: QuickCapturePanel(model: model) { [weak self] in
                 self?.quickCaptureWindow?.orderOut(nil)
             }
@@ -208,7 +208,7 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeQuickCaptureWindow() -> NSPanel {
         let panel = QuickCaptureWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 118),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 112),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -234,6 +234,24 @@ private final class QuickCaptureWindow: NSPanel {
 
     override var canBecomeMain: Bool {
         false
+    }
+}
+
+private final class ClearHostingView<Content: View>: NSHostingView<Content> {
+    override var isOpaque: Bool {
+        false
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.clear.setFill()
+        dirtyRect.fill()
+        super.draw(dirtyRect)
     }
 }
 
@@ -1146,13 +1164,17 @@ private struct QuickCapturePanel: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 9)
         }
-        .background(DTColor.panel)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(DTColor.panel)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 18)
                 .stroke(DTColor.inputBorder, lineWidth: 1.25)
         )
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .shadow(color: Color.black.opacity(0.11), radius: 24, x: 0, y: 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.clear)
         .onExitCommand {
             closeKeepingDraft()
         }
