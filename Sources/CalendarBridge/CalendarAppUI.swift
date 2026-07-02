@@ -198,12 +198,18 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.async {
+            panel.makeKey()
+            if let textView = panel.contentView?.firstSubview(of: QuickCaptureTextView.self) {
+                panel.makeFirstResponder(textView)
+            }
+        }
     }
 
     private func makeQuickCaptureWindow() -> NSPanel {
-        let panel = NSPanel(
+        let panel = QuickCaptureWindow(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 118),
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
@@ -218,6 +224,16 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         panel.isMovableByWindowBackground = false
         panel.appearance = NSAppearance(named: .aqua)
         return panel
+    }
+}
+
+private final class QuickCaptureWindow: NSPanel {
+    override var canBecomeKey: Bool {
+        true
+    }
+
+    override var canBecomeMain: Bool {
+        false
     }
 }
 
@@ -1284,6 +1300,20 @@ private final class QuickCaptureTextView: NSTextView {
         ]
         let point = NSPoint(x: textContainerOrigin.x, y: textContainerOrigin.y)
         placeholder.draw(at: point, withAttributes: attributes)
+    }
+}
+
+private extension NSView {
+    func firstSubview<T: NSView>(of type: T.Type) -> T? {
+        if let view = self as? T {
+            return view
+        }
+        for subview in subviews {
+            if let match = subview.firstSubview(of: type) {
+                return match
+            }
+        }
+        return nil
     }
 }
 
