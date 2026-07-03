@@ -1,9 +1,6 @@
 import AppKit
-import Carbon.HIToolbox
 import Combine
-import EventKit
 import Foundation
-import SwiftUI
 
 @MainActor
 final class DashboardModel: ObservableObject {
@@ -25,14 +22,14 @@ final class DashboardModel: ObservableObject {
         }
     }
 
-    private let eventStore = EKEventStore()
+    private let calendarService = AppleCalendarService()
 
     init() {
         quickCaptureDraft = UserDefaults.standard.string(forKey: Self.quickCaptureDraftKey) ?? ""
     }
 
     var dbPath: String {
-        DarktimeStorage.databasePath()
+        MatterStore.databasePath
     }
 
     var writableCalendars: [CalendarSnapshot] {
@@ -69,7 +66,7 @@ final class DashboardModel: ObservableObject {
         defer { isRequestingAccess = false }
 
         do {
-            _ = try await requestCalendarAccess()
+            try await calendarService.requestAccess()
         } catch {
             storageError = "Calendar access request failed: \(error.localizedDescription)"
         }
@@ -94,7 +91,7 @@ final class DashboardModel: ObservableObject {
         }
 
         do {
-            _ = try DarktimeStorage.createMatter(text: trimmed, source: source)
+            _ = try MatterStore.capture(text: trimmed, source: source)
             if revealInbox {
                 selectedSection = .inbox
             }
@@ -113,7 +110,7 @@ final class DashboardModel: ObservableObject {
 
     func moveMatter(_ matter: MatterSnapshot, to status: String) {
         do {
-            _ = try DarktimeStorage.updateMatterStatus(id: matter.id, status: status)
+            _ = try MatterStore.moveMatter(matter, to: status)
             if status == "rootbox" {
                 selectedSection = .rootbox
             } else if status == "dropped" || status == "done" || status == "later" {
@@ -127,33 +124,14 @@ final class DashboardModel: ObservableObject {
     }
 
     func mcpCommand() -> String {
-        let appURL = Bundle.main.bundleURL
-        let distRepoRoot = appURL
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let buildRepoRoot = appURL
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-
-        let candidates = [
-            distRepoRoot.appendingPathComponent("dist").appendingPathComponent("mcp-server.js"),
-            buildRepoRoot.appendingPathComponent("dist").appendingPathComponent("mcp-server.js")
-        ]
-
-        if let mcpServer = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
-            return "node \(shellQuote(mcpServer.path))"
-        }
-
-        return "node /path/to/darktime/dist/mcp-server.js"
+        MCPCommandProvider.command()
     }
 
     private func refreshStorage() {
         do {
-            try DarktimeStorage.ensureDatabase()
-            _ = try DarktimeStorage.importShortcutInbox()
-            sessions = try DarktimeStorage.recentSessions(limit: 12)
-            matters = try DarktimeStorage.recentMatters(limit: 180)
+            let snapshot = try MatterStore.refreshSnapshot()
+            sessions = snapshot.sessions
+            matters = snapshot.matters
             storageReady = true
             storageError = nil
         } catch {
@@ -165,23 +143,9 @@ final class DashboardModel: ObservableObject {
     }
 
     private func refreshCalendar() {
-        let status = EKEventStore.authorizationStatus(for: .event)
-        authorizationStatus = statusName(status)
-        canReadWrite = hasFullCalendarAccess(status)
-
-        if canReadWrite {
-            calendars = eventStore.calendars(for: .event)
-                .sorted { lhs, rhs in
-                    lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-                }
-                .map(calendarSnapshot)
-        } else {
-            calendars = []
-        }
-    }
-
-    private func shellQuote(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+        let authorization = calendarService.authorizationStatus()
+        authorizationStatus = authorization.status
+        canReadWrite = authorization.canReadWrite
+        calendars = calendarService.calendarsIfAuthorized()
     }
 }
-

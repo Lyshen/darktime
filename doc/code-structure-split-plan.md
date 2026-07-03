@@ -59,6 +59,13 @@ Sources/Darktime/
     DashboardModel.swift
     WorkspaceSection.swift
 
+  Stores/
+    MatterStore.swift
+
+  Services/
+    AppleCalendarService.swift
+    MCPCommandProvider.swift
+
   UI/
     DarktimeDashboard.swift
 
@@ -138,6 +145,26 @@ Sources/Darktime/
 `WorkspaceSection.swift`
 
 - Capture / Inbox / Rootbox / Calendar 等主导航枚举。
+
+### Stores
+
+`MatterStore.swift`
+
+- 封装 Matter 的本地存储读写。
+- 负责从 SQLite facade 刷新 Inbox/Rootbox/MCP session 快照。
+- 对 UI 暴露产品动作，而不是数据库细节。
+
+### Services
+
+`AppleCalendarService.swift`
+
+- 封装 Apple Calendar 权限和日历列表读取。
+- 让 UI model 不直接依赖 EventKit 细节。
+
+`MCPCommandProvider.swift`
+
+- 封装本机 MCP server 启动命令生成。
+- 让 UI model 不直接理解 app bundle 和 repo build 路径。
 
 ### UI
 
