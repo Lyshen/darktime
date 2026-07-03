@@ -39,14 +39,16 @@ struct QuickCaptureTextInput: NSViewRepresentable {
     func updateNSView(_ nsView: QuickCaptureTextField, context: Context) {
         context.coordinator.onSubmit = onSubmit
         context.coordinator.onCancel = onCancel
-        if nsView.stringValue != text {
+        if !nsView.isComposingText, nsView.stringValue != text {
             nsView.stringValue = text
         }
         nsView.onSubmit = onSubmit
         nsView.onCancel = onCancel
         nsView.placeholderString = placeholder
         nsView.textColor = NSColor.labelColor
-        nsView.normalizeEditorStyle()
+        if !nsView.isComposingText {
+            nsView.normalizeEditorStyle()
+        }
     }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
@@ -71,7 +73,17 @@ struct QuickCaptureTextInput: NSViewRepresentable {
             guard let textField = notification.object as? QuickCaptureTextField else {
                 return
             }
+            guard !textField.isComposingText else {
+                return
+            }
             textField.normalizeEditorStyle()
+            text = textField.stringValue
+        }
+
+        func controlTextDidEndEditing(_ notification: Notification) {
+            guard let textField = notification.object as? QuickCaptureTextField else {
+                return
+            }
             text = textField.stringValue
         }
 
@@ -82,14 +94,22 @@ struct QuickCaptureTextInput: NSViewRepresentable {
         ) -> Bool {
             switch commandSelector {
             case #selector(NSResponder.insertNewline(_:)):
+                guard !textView.hasMarkedText() else {
+                    return false
+                }
                 onSubmit()
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
+                guard !textView.hasMarkedText() else {
+                    return false
+                }
                 onCancel()
                 return true
             default:
-                textView.textColor = NSColor.labelColor
-                textView.insertionPointColor = NSColor.labelColor
+                if !textView.hasMarkedText() {
+                    textView.textColor = NSColor.labelColor
+                    textView.insertionPointColor = NSColor.labelColor
+                }
                 return false
             }
         }
@@ -110,6 +130,10 @@ final class QuickCaptureTextField: NSTextField {
         return result
     }
 
+    var isComposingText: Bool {
+        (currentEditor() as? NSTextView)?.hasMarkedText() == true
+    }
+
     func normalizeEditorStyle() {
         let textFont = font ?? NSFont.systemFont(ofSize: 15)
         let textColor = NSColor.labelColor
@@ -117,6 +141,9 @@ final class QuickCaptureTextField: NSTextField {
         self.textColor = textColor
 
         guard let editor = currentEditor() as? NSTextView else {
+            return
+        }
+        guard !editor.hasMarkedText() else {
             return
         }
         editor.textColor = textColor
@@ -141,5 +168,4 @@ extension NSView {
         return nil
     }
 }
-
 
