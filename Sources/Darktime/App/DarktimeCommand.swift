@@ -104,12 +104,12 @@ struct FreeSlotSnapshot: Encodable {
 }
 
 @main
-struct CalendarBridge {
+struct DarktimeCommand {
     @MainActor
     static func main() async {
         let launchArguments = normalizedLaunchArguments(CommandLine.arguments)
         guard launchArguments.count >= 2 else {
-            launchCalendarAppUI()
+            launchDarktimeAppUI()
             return
         }
 
