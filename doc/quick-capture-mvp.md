@@ -21,7 +21,7 @@ Control + Option + Space
 - `Control + Option + Space` opens Quick Capture.
 - If Quick Capture is already open, the same shortcut focuses it.
 - `Enter` saves the current draft to Inbox.
-- `Shift + Enter` inserts a newline.
+- The MVP input is single-line to keep capture fast and reliable.
 - `Esc` closes the panel and preserves the draft.
 - Clicking outside the panel closes it and preserves the draft.
 - Empty drafts cannot be saved.

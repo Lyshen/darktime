@@ -200,8 +200,8 @@ private final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
         panel.makeKeyAndOrderFront(nil)
         DispatchQueue.main.async {
             panel.makeKey()
-            if let textView = panel.contentView?.firstSubview(of: QuickCaptureTextView.self) {
-                panel.makeFirstResponder(textView)
+            if let textField = panel.contentView?.firstSubview(of: QuickCaptureTextField.self) {
+                panel.makeFirstResponder(textField)
             }
         }
     }
@@ -1240,61 +1240,91 @@ private struct QuickCaptureTextInput: NSViewRepresentable {
     let onCancel: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
+        Coordinator(text: $text, onSubmit: onSubmit, onCancel: onCancel)
     }
 
-    func makeNSView(context: Context) -> QuickCaptureTextView {
-        let textView = QuickCaptureTextView()
-        textView.delegate = context.coordinator
-        textView.font = NSFont.systemFont(ofSize: 15)
-        textView.applyCaptureTextStyle()
-        textView.drawsBackground = false
-        textView.isRichText = false
-        textView.importsGraphics = false
-        textView.allowsUndo = true
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.textContainerInset = NSSize(width: 0, height: 0)
-        textView.textContainer?.lineFragmentPadding = 0
-        textView.placeholder = placeholder
-        textView.onSubmit = onSubmit
-        textView.onCancel = onCancel
-        return textView
+    func makeNSView(context: Context) -> QuickCaptureTextField {
+        let textField = QuickCaptureTextField()
+        textField.delegate = context.coordinator
+        textField.font = NSFont.systemFont(ofSize: 15)
+        textField.textColor = NSColor.labelColor
+        textField.stringValue = text
+        textField.placeholderString = placeholder
+        textField.isBordered = false
+        textField.isBezeled = false
+        textField.drawsBackground = false
+        textField.focusRingType = .none
+        textField.usesSingleLineMode = true
+        textField.lineBreakMode = .byTruncatingTail
+        textField.cell?.wraps = false
+        textField.cell?.isScrollable = true
+        textField.onSubmit = onSubmit
+        textField.onCancel = onCancel
+        textField.normalizeEditorStyle()
+        return textField
     }
 
-    func updateNSView(_ nsView: QuickCaptureTextView, context: Context) {
-        if nsView.string != text {
-            nsView.string = text
+    func updateNSView(_ nsView: QuickCaptureTextField, context: Context) {
+        context.coordinator.onSubmit = onSubmit
+        context.coordinator.onCancel = onCancel
+        if nsView.stringValue != text {
+            nsView.stringValue = text
         }
-        nsView.placeholder = placeholder
         nsView.onSubmit = onSubmit
         nsView.onCancel = onCancel
-        nsView.applyCaptureTextStyle()
+        nsView.placeholderString = placeholder
+        nsView.textColor = NSColor.labelColor
+        nsView.normalizeEditorStyle()
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextFieldDelegate {
         @Binding var text: String
+        var onSubmit: () -> Void
+        var onCancel: () -> Void
 
-        init(text: Binding<String>) {
+        init(text: Binding<String>, onSubmit: @escaping () -> Void, onCancel: @escaping () -> Void) {
             _text = text
+            self.onSubmit = onSubmit
+            self.onCancel = onCancel
         }
 
-        func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else {
+        func controlTextDidBeginEditing(_ notification: Notification) {
+            guard let textField = notification.object as? QuickCaptureTextField else {
                 return
             }
-            (textView as? QuickCaptureTextView)?.applyCaptureTextStyle()
-            text = textView.string
+            textField.normalizeEditorStyle()
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let textField = notification.object as? QuickCaptureTextField else {
+                return
+            }
+            textField.normalizeEditorStyle()
+            text = textField.stringValue
+        }
+
+        func control(
+            _ control: NSControl,
+            textView: NSTextView,
+            doCommandBy commandSelector: Selector
+        ) -> Bool {
+            switch commandSelector {
+            case #selector(NSResponder.insertNewline(_:)):
+                onSubmit()
+                return true
+            case #selector(NSResponder.cancelOperation(_:)):
+                onCancel()
+                return true
+            default:
+                textView.textColor = NSColor.labelColor
+                textView.insertionPointColor = NSColor.labelColor
+                return false
+            }
         }
     }
 }
 
-private final class QuickCaptureTextView: NSTextView {
-    var placeholder = "" {
-        didSet {
-            needsDisplay = true
-        }
-    }
+private final class QuickCaptureTextField: NSTextField {
     var onSubmit: (() -> Void)?
     var onCancel: (() -> Void)?
 
@@ -1302,51 +1332,27 @@ private final class QuickCaptureTextView: NSTextView {
         false
     }
 
-    func applyCaptureTextStyle() {
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        normalizeEditorStyle()
+        return result
+    }
+
+    func normalizeEditorStyle() {
         let textFont = font ?? NSFont.systemFont(ofSize: 15)
         let textColor = NSColor.labelColor
         font = textFont
         self.textColor = textColor
-        insertionPointColor = textColor
-        typingAttributes = [
+
+        guard let editor = currentEditor() as? NSTextView else {
+            return
+        }
+        editor.textColor = textColor
+        editor.insertionPointColor = textColor
+        editor.typingAttributes = [
             .font: textFont,
             .foregroundColor: textColor
         ]
-        markedTextAttributes = [
-            .font: textFont,
-            .foregroundColor: textColor,
-            .underlineStyle: NSUnderlineStyle.single.rawValue,
-            .underlineColor: NSColor.tertiaryLabelColor
-        ]
-    }
-
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 36, 76:
-            if event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.shift) {
-                insertNewline(nil)
-            } else {
-                onSubmit?()
-            }
-        case 53:
-            onCancel?()
-        default:
-            super.keyDown(with: event)
-        }
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        guard string.isEmpty, !placeholder.isEmpty else {
-            return
-        }
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font ?? NSFont.systemFont(ofSize: 15),
-            .foregroundColor: NSColor.secondaryLabelColor
-        ]
-        let point = NSPoint(x: textContainerOrigin.x, y: textContainerOrigin.y)
-        placeholder.draw(at: point, withAttributes: attributes)
     }
 }
 
