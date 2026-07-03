@@ -29,7 +29,7 @@ final class DashboardModel: ObservableObject {
     }
 
     var dbPath: String {
-        MatterStore.databasePath
+        MatterRepository.databasePath
     }
 
     var writableCalendars: [CalendarSnapshot] {
@@ -91,7 +91,7 @@ final class DashboardModel: ObservableObject {
         }
 
         do {
-            _ = try MatterStore.capture(text: trimmed, source: source)
+            _ = try MatterRepository.capture(text: trimmed, source: source)
             if revealInbox {
                 selectedSection = .inbox
             }
@@ -110,7 +110,7 @@ final class DashboardModel: ObservableObject {
 
     func moveMatter(_ matter: MatterSnapshot, to status: String) {
         do {
-            _ = try MatterStore.moveMatter(matter, to: status)
+            _ = try MatterRepository.moveMatter(matter, to: status)
             if status == "rootbox" {
                 selectedSection = .rootbox
             } else if status == "dropped" || status == "done" || status == "later" {
@@ -129,7 +129,7 @@ final class DashboardModel: ObservableObject {
 
     private func refreshStorage() {
         do {
-            let snapshot = try MatterStore.refreshSnapshot()
+            let snapshot = try MatterRepository.refreshSnapshot()
             sessions = snapshot.sessions
             matters = snapshot.matters
             storageReady = true

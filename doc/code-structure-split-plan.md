@@ -17,8 +17,8 @@
 
 ```text
 Sources/Darktime/CalendarAppUI.swift              约 1900 行，拆分前
-Sources/Darktime/DarktimeCommand.swift            约 680 行
-Sources/Darktime/Storage/DarktimeStorage.swift    约 550 行
+Sources/Darktime/App/DarktimeCommand.swift        约 680 行
+Sources/Darktime/Core/Persistence/LocalDatabase.swift 约 550 行
 src/mcp-server.ts                                 约 970 行
 ```
 
@@ -47,71 +47,67 @@ src/mcp-server.ts                                 约 970 行
 
 ```text
 Sources/Darktime/
-  DarktimeCommand.swift
   Info.plist
 
   App/
+    DarktimeCommand.swift
     DarktimeApp.swift
     DarktimeAppDelegate.swift
     ApplicationMenu.swift
 
-  Models/
-    DashboardModel.swift
-    WorkspaceSection.swift
-
-  Stores/
-    MatterStore.swift
-
-  Services/
-    AppleCalendarService.swift
-    MCPCommandProvider.swift
-
-  UI/
-    DarktimeDashboard.swift
-
-    Theme/
-      DTColor.swift
-      Formatters.swift
-
-    Components/
-      Pane.swift
-      WorkspaceTopBar.swift
-      WorkspaceTitle.swift
-      EmptyStateLine.swift
-      SignalDot.swift
-      Tags.swift
-
-    Sidebar/
+  Features/
+    AppShell/
+      DarktimeDashboard.swift
+      DashboardModel.swift
+      WorkspaceSection.swift
       WorkspaceRail.swift
-      RailItemButton.swift
       SidebarResizeHandle.swift
 
-    Workspaces/
+    Capture/
       CaptureWorkspace.swift
-      InboxWorkspace.swift
-      RootboxWorkspace.swift
-      MatterWorkspace.swift
-      CalendarWorkspace.swift
-
-    Matters/
-      MatterList.swift
-      MatterRow.swift
-      MatterActionBars.swift
 
     QuickCapture/
       QuickCapturePanel.swift
       QuickCaptureTextInput.swift
       QuickCaptureWindow.swift
 
-    Calendar/
-      SourcesPanel.swift
-      StatusPanel.swift
-      AgentsPanel.swift
+    Inbox/
+      InboxWorkspace.swift
+
+    Rootbox/
+      RootboxWorkspace.swift
+
+    Matters/
+      MatterWorkspace.swift
+      MatterList.swift
+      MatterActionBars.swift
+
+    CalendarIntegration/
+      CalendarWorkspace.swift
+      CalendarPanels.swift
       CalendarRows.swift
 
-  Storage/
-    DarktimeStorage.swift
-    StorageModels.swift
+  Core/
+    Persistence/
+      LocalDatabase.swift
+      MatterRepository.swift
+      StorageModels.swift
+
+    Integrations/
+      Calendar/
+        AppleCalendarService.swift
+      MCP/
+        MCPCommandProvider.swift
+
+  SharedUI/
+    Components/
+      Pane.swift
+      WorkspaceTopBar.swift
+      WorkspaceTitle.swift
+      InfoComponents.swift
+
+    Theme/
+      Theme.swift
 ```
 
 ## 文件职责
@@ -134,93 +130,65 @@ Sources/Darktime/
 - 配置 macOS 菜单项。
 - 包含 Quick Capture、Calendar、Quit 等菜单动作入口。
 
-### Models
+### Features
 
-`DashboardModel.swift`
+`Features/AppShell`
 
-- UI 状态和数据刷新逻辑。
-- Matter capture / move / refresh。
-- Calendar authorization 状态读取。
+- 主界面 shell，包含 Dashboard、左侧栏、主导航枚举和 DashboardModel。
+- 这不是业务领域层，而是 app 的主操作台。
 
-`WorkspaceSection.swift`
+`Features/Capture`
 
-- Capture / Inbox / Rootbox / Calendar 等主导航枚举。
+- 主窗口里的 Capture 工作区。
 
-### Stores
+`Features/QuickCapture`
 
-`MatterStore.swift`
+- 全局快捷 capture 浮窗。
+- 这是用户高频入口，所以单独成为 feature。
 
-- 封装 Matter 的本地存储读写。
-- 负责从 SQLite facade 刷新 Inbox/Rootbox/MCP session 快照。
-- 对 UI 暴露产品动作，而不是数据库细节。
+`Features/Inbox` / `Features/Rootbox` / `Features/Matters`
 
-### Services
+- Inbox 和 Rootbox 页面。
+- Matters 里放这些页面共享的列表和动作条。
 
-`AppleCalendarService.swift`
+`Features/CalendarIntegration`
 
-- 封装 Apple Calendar 权限和日历列表读取。
-- 让 UI model 不直接依赖 EventKit 细节。
+- Calendar 不是产品主轴，而是一个 integration 的用户界面。
+- 它保留为二级功能，而不是顶层产品目录。
+
+### Core
+
+`Core/Persistence`
+
+- SQLite、本地导入、repository 和存储快照模型。
+- `LocalDatabase` 是底层数据库 facade。
+- `MatterRepository` 是面向产品动作的持久化接口。
+
+`Core/Integrations`
 
 `MCPCommandProvider.swift`
 
 - 封装本机 MCP server 启动命令生成。
 - 让 UI model 不直接理解 app bundle 和 repo build 路径。
 
-### UI
+`AppleCalendarService.swift`
 
-`DarktimeDashboard.swift`
+- 封装 Apple Calendar 权限和日历列表读取。
+- 让 DashboardModel 不直接依赖 EventKit 细节。
 
-- 只保留主界面组合关系。
-- 不放具体 workspace 的大段实现。
+### SharedUI
 
-`UI/Workspaces`
+`SharedUI/Components`
 
-- 每个主页面一个文件。
-- Capture、Inbox、Rootbox、Matter、Calendar 分离。
+- 无业务含义的通用 UI 小组件。
 
-`UI/QuickCapture`
+`SharedUI/Theme`
 
-- Quick Capture 浮窗的 SwiftUI 面板、原生输入框、窗口类分离。
-- 这是后续继续打磨手感最频繁的区域，需要单独维护。
-
-`UI/Sidebar`
-
-- 左侧导航栏、item、拖拽宽度控件。
-
-`UI/Matters`
-
-- Matter 列表、Matter 行、Clear/Rootbox action bar。
-
-`UI/Calendar`
-
-- 现有 Apple Calendar dashboard 相关面板先作为子功能保留。
-- Sources、Status、Agents、Calendar rows 归到这里。
-
-`UI/Theme`
-
-- 颜色、时间格式化、状态颜色等视觉基础设施。
-
-`UI/Components`
-
-- 可复用的小组件，避免散落在页面文件底部。
-
-### Storage
-
-`DarktimeStorage.swift`
-
-- 暂时保留 SQLite 操作主体。
-- 本次只建议先把 snapshot struct 移到 `StorageModels.swift`。
-
-`StorageModels.swift`
-
-- `MCPSessionSnapshot`
-- `ActionLogSnapshot`
-- `MatterSnapshot`
-- `MatterLogSnapshot`
+- 颜色、日期格式化、状态颜色等视觉基础设施。
 
 ## 暂不优先拆的部分
 
-`DarktimeCommand.swift`
+`App/DarktimeCommand.swift`
 
 - 这是 Apple Calendar CLI / EventKit bridge。
 - 当前虽然偏长，但它的职责还算集中。
@@ -271,9 +239,8 @@ UI
 
 后续最重要的重构方向：
 
-- 从 `DashboardModel` 拆出 `MatterStore` 或 `MatterRepository`。
-- 从 `DashboardModel` 拆出 `CalendarAccessService`。
-- 把 MCP command 生成逻辑移出 UI model。
+- `DashboardModel` 已经通过 `MatterRepository`、`AppleCalendarService`、`MCPCommandProvider` 隔离了底层能力。
+- 下一步如果继续瘦身，应该抽 use case，而不是继续把 UI 文件切碎。
 - 让 UI 只依赖产品状态和动作，不直接理解 SQLite、EventKit、MCP 的细节。
 
 `src/mcp-server.ts`
@@ -296,16 +263,17 @@ src/
 
 ### Step 1: Mac App UI 物理拆分
 
-- 从 `CalendarAppUI.swift` 拆出 App、Models、UI、QuickCapture、Workspaces、Components。
+- 从 `CalendarAppUI.swift` 拆出 App、Features、Core、SharedUI。
 - 不修改 UI 行为。
 - 不改数据库。
 - 不改 MCP。
 - 每移动一组文件后运行 build。
 
-### Step 2: Storage Models 拆分
+### Step 2: Persistence 拆分
 
-- 把 snapshot structs 移到 `Storage/StorageModels.swift`。
-- 保持 `DarktimeStorage` API 不变。
+- 把 snapshot structs 移到 `Core/Persistence/StorageModels.swift`。
+- 把 SQLite facade 改名为 `LocalDatabase`。
+- 用 `MatterRepository` 对 UI model 暴露持久化动作。
 
 ### Step 3: 观察是否需要改访问级别
 

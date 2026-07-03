@@ -1,6 +1,7 @@
 import Foundation
 import SQLite3
-enum DarktimeStorage {
+
+enum LocalDatabase {
     static let matterStatuses = ["inbox", "today", "later", "done", "dropped", "rootbox"]
 
     static func databasePath() -> String {

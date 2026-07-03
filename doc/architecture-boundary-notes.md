@@ -125,26 +125,30 @@ Integrations/
 现在已经比之前清楚，但仍然有几个不理想的地方：
 
 1. `DashboardModel` 仍然是一个 presentation model + app coordinator 的混合体。
-2. `MatterStore` 这个名字虽然比直接调 SQLite 好，但它仍然带着 `Matter` 这个未完全稳定的产品词。
-3. `AppleCalendarService` 还偏 provider 命名，后面应该挂到 `Integrations/Calendar`。
+2. `MatterRepository` 仍然带着 `Matter` 这个未完全稳定的产品词，但它已经被限制在 persistence 边界内。
+3. `AppleCalendarService` 已经挂到 `Core/Integrations/Calendar`，但后续还可以抽象成 connector protocol。
 4. `DarktimeCommand.swift` 仍然混着 app launch 和 CLI bridge。
 5. MCP server 还在 TypeScript 单文件里，后续也会成为类似问题。
 
-## 下一步建议
+## 当前落地结构
 
-### Step 1: 建立更清楚的层
-
-建议下一轮目录变成：
+当前不硬套 DDD，而是采用更适合 Mac app MVP 的 Feature + Core + SharedUI 结构：
 
 ```text
 Sources/Darktime/
   App/
-  Presentation/
-  Domain/
-  UseCases/
-  Data/
-  Integrations/
-  UI/
+  Features/
+    AppShell/
+    Capture/
+    QuickCapture/
+    Inbox/
+    Rootbox/
+    Matters/
+    CalendarIntegration/
+  Core/
+    Persistence/
+    Integrations/
+  SharedUI/
 ```
 
 其中：
@@ -153,23 +157,17 @@ Sources/Darktime/
 App
   macOS 生命周期、窗口、菜单、快捷键
 
-Presentation
-  DashboardModel 这类 UI 状态协调
+Features
+  用户能感知的产品功能和主界面 shell
 
-Domain
-  捕获对象、状态、业务枚举
+Core/Persistence
+  SQLite、repository、本地文件导入、存储快照
 
-UseCases
-  Capture 一条内容、移动到 Rootbox、刷新 dashboard snapshot
+Core/Integrations
+  Calendar、MCP、未来 Feishu/Google/Outlook 等外部能力
 
-Data
-  SQLite repository 和本地文件导入
-
-Integrations
-  Calendar、MCP、未来 Feishu/Google/Outlook
-
-UI
-  SwiftUI view、组件、主题
+SharedUI
+  无业务语义的 SwiftUI 组件和主题
 ```
 
 ### Step 2: 暂缓重命名 Matter
@@ -185,30 +183,20 @@ UI
 更好的做法是先隔离它：
 
 ```text
-Domain/Matter.swift
-Data/MatterRepository.swift
-UseCases/CaptureMatter.swift
+Core/Persistence/MatterRepository.swift
+Features/Matters/
 ```
 
 等产品语言成熟后，再决定是否整体迁移。
 
-### Step 3: 把 Calendar 降级成 Integration
-
-下一次代码移动可以把：
+### Step 3: Calendar 作为 Integration
 
 ```text
-Services/AppleCalendarService.swift
-UI/Calendar/
+Core/Integrations/Calendar/AppleCalendarService.swift
+Features/CalendarIntegration/
 ```
 
-整理为：
-
-```text
-Integrations/Calendar/AppleCalendarService.swift
-UI/Integrations/Calendar/
-```
-
-这能表达 Calendar 是 Darktime 的连接能力，而不是产品中心。
+这表达 Calendar 是 Darktime 的连接能力和二级界面，而不是产品中心。
 
 ### Step 4: 拆 DarktimeCommand
 
@@ -237,4 +225,3 @@ Integrations/Calendar/EventKit/
 2. 把 Calendar 放回 integration 位置。
 3. 把 DashboardModel 继续瘦身成纯 presentation model。
 4. 等 Capture / Inbox / Clear / Rootbox 的产品概念更稳定后，再决定核心 domain term。
-
