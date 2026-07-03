@@ -1247,7 +1247,7 @@ private struct QuickCaptureTextInput: NSViewRepresentable {
         let textView = QuickCaptureTextView()
         textView.delegate = context.coordinator
         textView.font = NSFont.systemFont(ofSize: 15)
-        textView.textColor = NSColor.labelColor
+        textView.applyCaptureTextStyle()
         textView.drawsBackground = false
         textView.isRichText = false
         textView.importsGraphics = false
@@ -1269,10 +1269,7 @@ private struct QuickCaptureTextInput: NSViewRepresentable {
         nsView.placeholder = placeholder
         nsView.onSubmit = onSubmit
         nsView.onCancel = onCancel
-
-        DispatchQueue.main.async {
-            nsView.window?.makeFirstResponder(nsView)
-        }
+        nsView.applyCaptureTextStyle()
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -1286,6 +1283,7 @@ private struct QuickCaptureTextInput: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else {
                 return
             }
+            (textView as? QuickCaptureTextView)?.applyCaptureTextStyle()
             text = textView.string
         }
     }
@@ -1302,6 +1300,24 @@ private final class QuickCaptureTextView: NSTextView {
 
     override var mouseDownCanMoveWindow: Bool {
         false
+    }
+
+    func applyCaptureTextStyle() {
+        let textFont = font ?? NSFont.systemFont(ofSize: 15)
+        let textColor = NSColor.labelColor
+        font = textFont
+        self.textColor = textColor
+        insertionPointColor = textColor
+        typingAttributes = [
+            .font: textFont,
+            .foregroundColor: textColor
+        ]
+        markedTextAttributes = [
+            .font: textFont,
+            .foregroundColor: textColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+            .underlineColor: NSColor.tertiaryLabelColor
+        ]
     }
 
     override func keyDown(with event: NSEvent) {
