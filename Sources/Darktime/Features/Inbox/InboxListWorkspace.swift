@@ -1,0 +1,116 @@
+import AppKit
+import Carbon.HIToolbox
+import Combine
+import EventKit
+import Foundation
+import SwiftUI
+
+struct InboxListWorkspace: View {
+    @ObservedObject var model: DashboardModel
+    let onStartClear: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            InboxHeader(
+                count: model.inboxMatters.count,
+                canStartClear: !model.inboxMatters.isEmpty,
+                onStartClear: onStartClear
+            )
+            Divider().overlay(DTColor.line.opacity(0.7))
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    if model.inboxMatters.isEmpty {
+                        EmptyStateLine(
+                            systemImage: "tray",
+                            title: "Inbox is clear",
+                            detail: "Use quick capture to unload the next open loop."
+                        )
+                        .padding(.top, 34)
+                    } else {
+                        LazyVStack(spacing: 9) {
+                            ForEach(model.inboxMatters, id: \.id) { matter in
+                                InboxMatterSlip(matter: matter)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 36)
+                .padding(.top, 28)
+                .padding(.bottom, 36)
+            }
+        }
+    }
+}
+
+private struct InboxHeader: View {
+    let count: Int
+    let canStartClear: Bool
+    let onStartClear: () -> Void
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "tray.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DTColor.muted)
+                .frame(width: 18)
+            Text("Inbox")
+                .font(.system(size: 13, weight: .semibold, design: .default))
+                .foregroundStyle(DTColor.text)
+            Text(count == 1 ? "1 open loop" : "\(count) open loops")
+                .font(.system(size: 12, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.muted)
+                .lineLimit(1)
+            Spacer()
+            Button {
+                onStartClear()
+            } label: {
+                Label("Start Clear", systemImage: "sparkles")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(!canStartClear)
+            .tint(DTColor.text)
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 46)
+        .background(DTColor.workspace)
+    }
+}
+
+private struct InboxMatterSlip: View {
+    let matter: MatterSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(matter.text)
+                .font(.system(size: 14, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.text)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer(minLength: 16)
+                Text("\(formatRelative(matter.createdAt)) · \(formatMatterSource(matter.source))")
+                    .font(.system(size: 11, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.dimmed)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color.black.opacity(0.024))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(Color.black.opacity(0.075), lineWidth: 1)
+        )
+    }
+}

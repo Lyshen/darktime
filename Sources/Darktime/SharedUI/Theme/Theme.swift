@@ -77,6 +77,21 @@ func formatLocalTime(_ isoString: String) -> String {
     return formatter.string(from: date)
 }
 
+func formatMatterSource(_ source: String) -> String {
+    switch source {
+    case "quick_capture": return "quick"
+    case "manual": return "manual"
+    case "shortcut": return "shortcut"
+    case "mcp": return "mcp"
+    default:
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count <= 12 {
+            return trimmed.isEmpty ? "unknown" : trimmed
+        }
+        return "\(trimmed.prefix(10))..."
+    }
+}
+
 func parseISODate(_ isoString: String) -> Date? {
     let fractionalFormatter = ISO8601DateFormatter()
     fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -115,4 +130,3 @@ func fourCharCode(_ value: String) -> OSType {
     }
     return result
 }
-
