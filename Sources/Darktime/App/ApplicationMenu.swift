@@ -13,12 +13,12 @@ func configureApplicationMenu() {
 
     appMenu.addItem(
         withTitle: "Quick Capture",
-        action: #selector(CalendarAppDelegate.showQuickCaptureFromMenu(_:)),
+        action: #selector(DarktimeAppDelegate.showQuickCaptureFromMenu(_:)),
         keyEquivalent: "n"
     )
     appMenu.addItem(
         withTitle: "Calendar",
-        action: #selector(CalendarAppDelegate.showCalendarFromMenu(_:)),
+        action: #selector(DarktimeAppDelegate.showCalendarFromMenu(_:)),
         keyEquivalent: "k"
     )
     appMenu.addItem(NSMenuItem.separator())

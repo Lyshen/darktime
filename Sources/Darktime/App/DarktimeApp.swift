@@ -6,15 +6,15 @@ import Foundation
 import SwiftUI
 
 @MainActor
-enum CalendarAppStorage {
-    static var delegate: CalendarAppDelegate?
+enum DarktimeAppStorage {
+    static var delegate: DarktimeAppDelegate?
 }
 
 @MainActor
-func launchCalendarAppUI() {
+func launchDarktimeAppUI() {
     let app = NSApplication.shared
-    let delegate = CalendarAppDelegate()
-    CalendarAppStorage.delegate = delegate
+    let delegate = DarktimeAppDelegate()
+    DarktimeAppStorage.delegate = delegate
 
     app.setActivationPolicy(.regular)
     app.delegate = delegate

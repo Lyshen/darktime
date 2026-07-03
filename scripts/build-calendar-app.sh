@@ -20,7 +20,7 @@ rm -rf \
 mkdir -p "$BUILD_APP_PATH/Contents/MacOS" "$BUILD_APP_PATH/Contents/Resources" "$DIST_DIR"
 
 cp "$ROOT_DIR/.build/release/darktime" "$BUILD_APP_PATH/Contents/MacOS/darktime"
-cp "$ROOT_DIR/Sources/CalendarBridge/Info.plist" "$BUILD_APP_PATH/Contents/Info.plist"
+cp "$ROOT_DIR/Sources/Darktime/Info.plist" "$BUILD_APP_PATH/Contents/Info.plist"
 cp "$ICON_PATH" "$BUILD_APP_PATH/Contents/Resources/DarktimeAppIcon.icns"
 
 codesign --force --deep --sign - "$BUILD_APP_PATH"

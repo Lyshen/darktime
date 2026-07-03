@@ -16,10 +16,10 @@
 目前项目能跑，但结构已经开始变重：
 
 ```text
-Sources/CalendarBridge/CalendarAppUI.swift    约 1900 行
-Sources/CalendarBridge/CalendarBridge.swift   约 680 行
-Sources/CalendarBridge/DarktimeStorage.swift  约 600 行
-src/mcp-server.ts                             约 970 行
+Sources/Darktime/CalendarAppUI.swift              约 1900 行，拆分前
+Sources/Darktime/DarktimeCommand.swift            约 680 行
+Sources/Darktime/Storage/DarktimeStorage.swift    约 550 行
+src/mcp-server.ts                                 约 970 行
 ```
 
 其中最明显的问题是 `CalendarAppUI.swift` 同时包含：
@@ -46,15 +46,14 @@ src/mcp-server.ts                             约 970 行
 ## 目标目录
 
 ```text
-Sources/CalendarBridge/
-  CalendarBridge.swift
+Sources/Darktime/
+  DarktimeCommand.swift
   Info.plist
 
   App/
     DarktimeApp.swift
-    CalendarAppDelegate.swift
+    DarktimeAppDelegate.swift
     ApplicationMenu.swift
-    AppWindows.swift
 
   Models/
     DashboardModel.swift
@@ -114,10 +113,10 @@ Sources/CalendarBridge/
 
 `DarktimeApp.swift`
 
-- 保留 `launchCalendarAppUI()`。
+- 保留 `launchDarktimeAppUI()`。
 - 只负责启动 AppKit app。
 
-`CalendarAppDelegate.swift`
+`DarktimeAppDelegate.swift`
 
 - 管理 app 生命周期。
 - 持有主窗口、quick capture panel、DashboardModel。
@@ -127,11 +126,6 @@ Sources/CalendarBridge/
 
 - 配置 macOS 菜单项。
 - 包含 Quick Capture、Calendar、Quit 等菜单动作入口。
-
-`AppWindows.swift`
-
-- 创建主窗口和 quick capture panel。
-- 放置窗口透明、尺寸、层级、焦点等 AppKit 细节。
 
 ### Models
 
@@ -199,7 +193,7 @@ Sources/CalendarBridge/
 
 ## 暂不优先拆的部分
 
-`CalendarBridge.swift`
+`DarktimeCommand.swift`
 
 - 这是 Apple Calendar CLI / EventKit bridge。
 - 当前虽然偏长，但它的职责还算集中。
@@ -207,12 +201,53 @@ Sources/CalendarBridge/
 
 ```text
 Bridge/
-  CalendarBridge.swift
+  DarktimeCommand.swift
   BridgeOptions.swift
   BridgeResponses.swift
   EventKitCalendarService.swift
   EventKitFormatters.swift
 ```
+
+## 物理拆分之后仍然不清晰的原因
+
+物理拆分解决的是“文件太大”的问题，但不会自动解决“系统边界”的问题。
+
+当前不清晰主要来自三个历史原因：
+
+1. 顶层模块曾经叫 `CalendarBridge`，但产品已经从日历桥接变成 Darktime。这个名字会误导读代码的人，以为 Calendar 是主产品。
+2. `DashboardModel` 仍然承担太多职责：UI state、Matter 操作、Calendar authorization、MCP command、Storage refresh 都在一起。
+3. Apple Calendar、MCP、本地 Inbox、Rootbox 是不同领域能力，但目前还没有形成清楚的 domain/service 边界。
+
+所以拆完文件后，下一步不是继续把文件切得更碎，而是把逻辑层次整理出来：
+
+```text
+App Shell
+  macOS lifecycle, windows, menu, global shortcut
+
+Product State
+  selected workspace, current matters, quick capture draft
+
+Domain
+  Matter, Inbox, Rootbox, Capture
+
+Services
+  Local storage
+  Apple Calendar
+  MCP integration
+
+UI
+  Dashboard
+  Workspaces
+  Quick Capture
+  Components
+```
+
+后续最重要的重构方向：
+
+- 从 `DashboardModel` 拆出 `MatterStore` 或 `MatterRepository`。
+- 从 `DashboardModel` 拆出 `CalendarAccessService`。
+- 把 MCP command 生成逻辑移出 UI model。
+- 让 UI 只依赖产品状态和动作，不直接理解 SQLite、EventKit、MCP 的细节。
 
 `src/mcp-server.ts`
 
@@ -277,4 +312,3 @@ npm run build:dmg
 - 主 Dashboard 文件只负责组合布局。
 - 构建通过。
 - 产品行为保持不变。
-

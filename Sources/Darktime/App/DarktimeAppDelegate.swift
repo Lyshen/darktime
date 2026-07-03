@@ -6,7 +6,7 @@ import Foundation
 import SwiftUI
 
 @MainActor
-final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
+final class DarktimeAppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private var quickCaptureWindow: NSPanel?
     private var model: DashboardModel?
@@ -101,7 +101,7 @@ final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
                     return noErr
                 }
 
-                let appDelegate = Unmanaged<CalendarAppDelegate>.fromOpaque(userData).takeUnretainedValue()
+                let appDelegate = Unmanaged<DarktimeAppDelegate>.fromOpaque(userData).takeUnretainedValue()
                 DispatchQueue.main.async {
                     appDelegate.showQuickCapture()
                 }
@@ -181,7 +181,7 @@ final class CalendarAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-extension CalendarAppDelegate: NSWindowDelegate {
+extension DarktimeAppDelegate: NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         guard
             let panel = notification.object as? NSPanel,
