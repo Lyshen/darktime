@@ -112,18 +112,23 @@ final class DashboardModel: ObservableObject {
         quickCaptureDraft = ""
     }
 
-    func moveMatter(_ matter: MatterSnapshot, to status: String) {
+    @discardableResult
+    func moveMatter(_ matter: MatterSnapshot, to status: String, navigate: Bool = true) -> Bool {
         do {
             _ = try MatterRepository.moveMatter(matter, to: status)
-            if status == "rootbox" {
-                selectedSection = .rootbox
-            } else if status == "dropped" || status == "done" || status == "later" || status == "inbox" {
-                selectedSection = .inbox
+            if navigate {
+                if status == "rootbox" {
+                    selectedSection = .rootbox
+                } else if status == "dropped" || status == "done" || status == "later" || status == "inbox" {
+                    selectedSection = .inbox
+                }
             }
             refresh()
+            return true
         } catch {
             storageReady = false
             storageError = String(describing: error)
+            return false
         }
     }
 
