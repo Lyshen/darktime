@@ -64,7 +64,7 @@ struct QuickCapturePanel: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSave)
-                .help("Capture")
+                .help("Capture to Inbox")
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 9)
@@ -133,7 +133,7 @@ struct QuickCapturePanel: View {
         if model.capture(text: trimmed, source: "quick_capture") {
             model.clearQuickCaptureDraft()
             errorMessage = nil
-            message = "Captured"
+            message = "Captured to Inbox"
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
                 onClose()
             }

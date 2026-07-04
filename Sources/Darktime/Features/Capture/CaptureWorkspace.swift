@@ -60,7 +60,7 @@ struct CaptureWorkspace: View {
                         .buttonStyle(.plain)
                         .keyboardShortcut(.return, modifiers: [.command])
                         .disabled(!canSave)
-                        .help("Capture")
+                        .help("Capture to Inbox")
                     }
                     .padding(.horizontal, 14)
                     .padding(.bottom, 10)
@@ -108,5 +108,4 @@ struct CaptureWorkspace: View {
         }
     }
 }
-
 
