@@ -6,7 +6,7 @@ struct MatterRepositorySnapshot {
 }
 
 enum MatterRepository {
-    static let droppedRetentionDays = 30
+    static let droppedRetentionDays = 3
 
     static var databasePath: String {
         LocalDatabase.databasePath()
