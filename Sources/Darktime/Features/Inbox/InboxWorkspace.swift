@@ -7,18 +7,20 @@ import SwiftUI
 
 struct InboxWorkspace: View {
     @ObservedObject var model: DashboardModel
+    @State private var isClearing = false
 
     var body: some View {
-        MatterWorkspace(
-            systemImage: "tray.fill",
-            title: "Inbox",
-            detail: "Captured matters, waiting to be cleared.",
-            matters: model.inboxMatters,
-            emptyTitle: "Inbox is clear",
-            emptyDetail: "Use quick capture to unload the next open loop.",
-            model: model
-        )
+        VStack(spacing: 0) {
+            if isClearing {
+                ClearFlowWorkspace(model: model) {
+                    isClearing = false
+                }
+            } else {
+                InboxListWorkspace(model: model) {
+                    isClearing = true
+                }
+            }
+        }
+        .background(DTColor.workspace)
     }
 }
-
-
