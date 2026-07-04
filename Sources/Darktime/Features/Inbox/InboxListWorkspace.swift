@@ -67,15 +67,9 @@ private struct InboxHeader: View {
                 .foregroundStyle(DTColor.muted)
                 .lineLimit(1)
             Spacer()
-            Button {
+            QuietHeaderButton("Clear", isEnabled: canStartClear) {
                 onStartClear()
-            } label: {
-                Label("Start Clear", systemImage: "sparkles")
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(!canStartClear)
-            .tint(DTColor.text)
         }
         .padding(.horizontal, 20)
         .frame(height: 46)

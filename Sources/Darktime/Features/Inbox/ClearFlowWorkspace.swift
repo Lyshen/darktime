@@ -88,14 +88,9 @@ private struct ClearHeader: View {
                 .font(.system(size: 12, weight: .regular, design: .default))
                 .foregroundStyle(DTColor.muted)
             Spacer()
-            Button {
+            QuietHeaderButton("Exit") {
                 onExit()
-            } label: {
-                Text("Exit")
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .tint(DTColor.dimmed)
         }
         .padding(.horizontal, 20)
         .frame(height: 46)
