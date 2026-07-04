@@ -29,7 +29,7 @@ struct ClearFlowWorkspace: View {
 
             ZStack {
                 if let matter = currentMatter {
-                    ClearMatterCard(
+                    ClearMatterFocus(
                         matter: matter,
                         onDrop: { resolve(matter, as: "dropped") },
                         onLater: { resolve(matter, as: "later") },
@@ -98,7 +98,7 @@ private struct ClearHeader: View {
     }
 }
 
-private struct ClearMatterCard: View {
+private struct ClearMatterFocus: View {
     let matter: MatterSnapshot
     let onDrop: () -> Void
     let onLater: () -> Void
@@ -121,31 +121,49 @@ private struct ClearMatterCard: View {
             Divider().overlay(DTColor.line)
 
             HStack(spacing: 10) {
-                clearAction("Drop", "xmark", tint: DTColor.dimmed, action: onDrop)
-                clearAction("Later", "clock", tint: DTColor.cyan, action: onLater)
-                clearAction("Done", "checkmark", tint: DTColor.green, action: onDone)
-                clearAction("Rootbox", "tree", tint: DTColor.green, action: onRootbox)
+                ClearActionButton("Drop", tint: DTColor.dimmed, action: onDrop)
+                ClearActionButton("Later", tint: DTColor.cyan, action: onLater)
+                ClearActionButton("Done", tint: DTColor.green, action: onDone)
+                ClearActionButton("Rootbox", tint: DTColor.green, action: onRootbox)
             }
         }
         .padding(22)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.black.opacity(0.024))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.black.opacity(0.09), lineWidth: 1)
-        )
+    }
+}
+
+private struct ClearActionButton: View {
+    let title: String
+    let tint: Color
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    init(_ title: String, tint: Color, action: @escaping () -> Void) {
+        self.title = title
+        self.tint = tint
+        self.action = action
     }
 
-    private func clearAction(_ title: String, _ image: String, tint: Color, action: @escaping () -> Void) -> some View {
+    var body: some View {
         Button(action: action) {
-            Label(title, systemImage: image)
+            Text(title)
+                .font(.system(size: 13, weight: .regular, design: .default))
+                .foregroundStyle(isHovered ? tint : DTColor.text)
                 .frame(maxWidth: .infinity)
+                .frame(height: 34)
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color.black.opacity(isHovered ? 0.035 : 0.018))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(isHovered ? tint.opacity(0.22) : Color.black.opacity(0.075), lineWidth: 1)
+                )
         }
-        .buttonStyle(.bordered)
-        .controlSize(.regular)
-        .tint(tint)
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
     }
 }
 
