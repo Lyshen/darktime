@@ -43,6 +43,11 @@ final class DarktimeAppDelegate: NSObject, NSApplicationDelegate {
         showMainWindow()
     }
 
+    @objc func showDroppedFromMenu(_ sender: Any?) {
+        model?.selectedSection = .dropped
+        showMainWindow()
+    }
+
     private func buildWindow(model: DashboardModel) {
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 840)
         let contentRect = visibleFrame.insetBy(dx: max(24, visibleFrame.width * 0.035), dy: max(24, visibleFrame.height * 0.05))

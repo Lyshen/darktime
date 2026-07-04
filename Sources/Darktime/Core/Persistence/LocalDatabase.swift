@@ -253,6 +253,45 @@ enum LocalDatabase {
         )
     }
 
+    static func deleteExpiredDroppedMatters(olderThanDays days: Int) throws {
+        let cutoffDate = Calendar.current.date(
+            byAdding: .day,
+            value: -max(1, days),
+            to: Date()
+        ) ?? Date()
+        let cutoff = ISO8601DateFormatter().string(from: cutoffDate)
+
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        try exec("BEGIN TRANSACTION;", db: db)
+        do {
+            try executePrepared(
+                """
+                DELETE FROM matter_logs
+                WHERE matter_id IN (
+                  SELECT id FROM matters
+                  WHERE status = 'dropped' AND updated_at <= ?
+                );
+                """,
+                values: [cutoff],
+                db: db
+            )
+            try executePrepared(
+                """
+                DELETE FROM matters
+                WHERE status = 'dropped' AND updated_at <= ?;
+                """,
+                values: [cutoff],
+                db: db
+            )
+            try exec("COMMIT;", db: db)
+        } catch {
+            try? exec("ROLLBACK;", db: db)
+            throw error
+        }
+    }
+
     static func recentMatters(status: String? = nil, limit: Int = 60) throws -> [MatterSnapshot] {
         if let status, !matterStatuses.contains(status) {
             throw StorageError.invalidInput("Unknown matter status '\(status)'.")
