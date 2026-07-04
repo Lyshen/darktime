@@ -19,11 +19,11 @@ private struct ClearSessionSummary {
         max(0, startedCount - totalResolved)
     }
 
-    var actionRows: [(title: String, count: Int, tint: Color)] {
+    var actionRows: [(title: String, detail: String, count: Int, tint: Color)] {
         [
-            ("Dropped", droppedCount, DTColor.dimmed),
-            ("Done", doneCount, DTColor.green),
-            ("Kept", keptCount, DTColor.green)
+            ("Dropped", "recoverable for \(MatterRepository.droppedRetentionDays) days", droppedCount, DTColor.dimmed),
+            ("Done", "handled", doneCount, DTColor.green),
+            ("Kept", "Rootbox", keptCount, DTColor.green)
         ].filter { $0.count > 0 }
     }
 
@@ -199,9 +199,24 @@ private struct ClearMatterFocus: View {
                 .frame(height: 1)
 
             HStack(spacing: 18) {
-                ClearActionButton("Drop", tint: DTColor.dimmed, action: onDrop)
-                ClearActionButton("Done", tint: DTColor.green, action: onDone)
-                ClearActionButton("Keep", tint: DTColor.green, action: onKeep)
+                ClearActionButton(
+                    "Drop",
+                    hint: "Recoverable for \(MatterRepository.droppedRetentionDays) days.",
+                    tint: DTColor.dimmed,
+                    action: onDrop
+                )
+                ClearActionButton(
+                    "Done",
+                    hint: "Handled. Clears from attention.",
+                    tint: DTColor.green,
+                    action: onDone
+                )
+                ClearActionButton(
+                    "Keep",
+                    hint: "Kept in Rootbox.",
+                    tint: DTColor.green,
+                    action: onKeep
+                )
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
@@ -211,13 +226,15 @@ private struct ClearMatterFocus: View {
 
 private struct ClearActionButton: View {
     let title: String
+    let hint: String
     let tint: Color
     let action: () -> Void
 
     @State private var isHovered = false
 
-    init(_ title: String, tint: Color, action: @escaping () -> Void) {
+    init(_ title: String, hint: String, tint: Color, action: @escaping () -> Void) {
         self.title = title
+        self.hint = hint
         self.tint = tint
         self.action = action
     }
@@ -235,6 +252,7 @@ private struct ClearActionButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .help(hint)
         .onHover { hovering in
             isHovered = hovering
         }
@@ -261,10 +279,10 @@ private struct ClearSessionSummaryView: View {
 
             VStack(spacing: 0) {
                 if summary.actionRows.isEmpty {
-                    SummaryLine(title: "Cleared", value: "0", tint: DTColor.dimmed)
+                    SummaryLine(title: "Cleared", detail: "no matters moved", value: "0", tint: DTColor.dimmed)
                 } else {
                     ForEach(Array(summary.actionRows.enumerated()), id: \.offset) { index, row in
-                        SummaryLine(title: row.title, value: "\(row.count)", tint: row.tint)
+                        SummaryLine(title: row.title, detail: row.detail, value: "\(row.count)", tint: row.tint)
                         if index < summary.actionRows.count - 1 {
                             Rectangle()
                                 .fill(Color.black.opacity(0.055))
@@ -309,14 +327,20 @@ private struct ClearSessionSummaryView: View {
 
 private struct SummaryLine: View {
     let title: String
+    let detail: String
     let value: String
     let tint: Color
 
     var body: some View {
         HStack {
-            Text(title)
-                .font(.system(size: 13, weight: .regular, design: .default))
-                .foregroundStyle(DTColor.muted)
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 13, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.muted)
+                Text("· \(detail)")
+                    .font(.system(size: 12, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.dimmed)
+            }
             Spacer()
             Text(value)
                 .font(.system(size: 13, weight: .regular, design: .default))
