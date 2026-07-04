@@ -56,6 +56,10 @@ final class DashboardModel: ObservableObject {
         matters.filter { $0.status == "rootbox" }
     }
 
+    var droppedMatters: [MatterSnapshot] {
+        matters.filter { $0.status == "dropped" }
+    }
+
     func refresh() {
         refreshStorage()
         refreshCalendar()
@@ -113,9 +117,19 @@ final class DashboardModel: ObservableObject {
             _ = try MatterRepository.moveMatter(matter, to: status)
             if status == "rootbox" {
                 selectedSection = .rootbox
-            } else if status == "dropped" || status == "done" || status == "later" {
+            } else if status == "dropped" || status == "done" || status == "later" || status == "inbox" {
                 selectedSection = .inbox
             }
+            refresh()
+        } catch {
+            storageReady = false
+            storageError = String(describing: error)
+        }
+    }
+
+    func restoreDroppedMatter(_ matter: MatterSnapshot) {
+        do {
+            _ = try MatterRepository.moveMatter(matter, to: "inbox")
             refresh()
         } catch {
             storageReady = false

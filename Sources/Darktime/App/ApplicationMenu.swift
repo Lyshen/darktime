@@ -21,6 +21,11 @@ func configureApplicationMenu() {
         action: #selector(DarktimeAppDelegate.showCalendarFromMenu(_:)),
         keyEquivalent: "k"
     )
+    appMenu.addItem(
+        withTitle: "Dropped",
+        action: #selector(DarktimeAppDelegate.showDroppedFromMenu(_:)),
+        keyEquivalent: ""
+    )
     appMenu.addItem(NSMenuItem.separator())
     appMenu.addItem(
         withTitle: "Quit Darktime",
@@ -32,4 +37,3 @@ func configureApplicationMenu() {
 
     NSApplication.shared.mainMenu = menu
 }
-

@@ -61,10 +61,11 @@ struct DarktimeDashboard: View {
             InboxWorkspace(model: model)
         case .rootbox:
             RootboxWorkspace(model: model)
+        case .dropped:
+            DroppedWorkspace(model: model)
         case .calendar:
             CalendarWorkspace(model: model)
         }
     }
 }
-
 

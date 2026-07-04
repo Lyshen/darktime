@@ -6,6 +6,8 @@ struct MatterRepositorySnapshot {
 }
 
 enum MatterRepository {
+    static let droppedRetentionDays = 3
+
     static var databasePath: String {
         LocalDatabase.databasePath()
     }
@@ -13,6 +15,7 @@ enum MatterRepository {
     static func refreshSnapshot() throws -> MatterRepositorySnapshot {
         try LocalDatabase.ensureDatabase()
         _ = try LocalDatabase.importShortcutInbox()
+        try LocalDatabase.deleteExpiredDroppedMatters(olderThanDays: droppedRetentionDays)
 
         return MatterRepositorySnapshot(
             sessions: try LocalDatabase.recentSessions(limit: 12),
