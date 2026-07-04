@@ -10,6 +10,7 @@ struct QuickCapturePanel: View {
     let onClose: () -> Void
     @State private var message: String?
     @State private var errorMessage: String?
+    @FocusState private var isInputFocused: Bool
 
     private var canSave: Bool {
         !model.quickCaptureDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -17,16 +18,19 @@ struct QuickCapturePanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            QuickCaptureTextInput(
-                text: $model.quickCaptureDraft,
-                placeholder: "Capture it.",
-                onSubmit: save,
-                onCancel: closeKeepingDraft
-            )
-            .frame(height: 46)
-            .padding(.horizontal, 18)
-            .padding(.top, 14)
-            .padding(.bottom, 4)
+            TextField("Capture it.", text: $model.quickCaptureDraft)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.text)
+                .lineLimit(1)
+                .focused($isInputFocused)
+                .onSubmit {
+                    save()
+                }
+                .frame(height: 46)
+                .padding(.horizontal, 18)
+                .padding(.top, 14)
+                .padding(.bottom, 4)
 
             HStack(alignment: .center, spacing: 10) {
                 statusView
@@ -76,6 +80,11 @@ struct QuickCapturePanel: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
+        .onAppear {
+            DispatchQueue.main.async {
+                isInputFocused = true
+            }
+        }
         .onExitCommand {
             closeKeepingDraft()
         }
@@ -133,5 +142,3 @@ struct QuickCapturePanel: View {
         }
     }
 }
-
-
