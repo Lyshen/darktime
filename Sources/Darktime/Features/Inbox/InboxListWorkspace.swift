@@ -28,14 +28,14 @@ struct InboxListWorkspace: View {
                         )
                         .padding(.top, 34)
                     } else {
-                        LazyVStack(spacing: 9) {
+                        LazyVStack(spacing: 11) {
                             ForEach(model.inboxMatters, id: \.id) { matter in
                                 InboxMatterSlip(matter: matter)
                             }
                         }
                     }
                 }
-                .frame(maxWidth: 720)
+                .frame(maxWidth: 680)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 36)
                 .padding(.top, 28)
@@ -86,31 +86,27 @@ private struct InboxMatterSlip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(matter.text)
-                .font(.system(size: 14, weight: .regular, design: .default))
+                .font(.system(size: 15, weight: .regular, design: .default))
                 .foregroundStyle(DTColor.text)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Spacer(minLength: 16)
-                Text("\(formatRelative(matter.createdAt)) · \(formatMatterSource(matter.source))")
-                    .font(.system(size: 11, weight: .regular, design: .default))
-                    .foregroundStyle(DTColor.dimmed)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                MatterMetaLine(createdAt: matter.createdAt, source: matter.source)
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
         .padding(.bottom, 10)
-        .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 7)
-                .fill(Color.black.opacity(0.024))
+                .fill(Color.black.opacity(0.018))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 7)
-                .stroke(Color.black.opacity(0.075), lineWidth: 1)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
         )
     }
 }

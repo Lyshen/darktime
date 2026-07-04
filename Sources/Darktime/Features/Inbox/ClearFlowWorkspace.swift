@@ -113,17 +113,14 @@ private struct ClearMatterCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text(matter.text)
-                .font(.system(size: 20, weight: .regular, design: .default))
+                .font(.system(size: 21, weight: .regular, design: .default))
                 .foregroundStyle(DTColor.text)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Spacer()
-                Text("\(formatRelative(matter.createdAt)) · \(formatMatterSource(matter.source))")
-                    .font(.system(size: 11, weight: .regular, design: .default))
-                    .foregroundStyle(DTColor.dimmed)
-                    .lineLimit(1)
+                MatterMetaLine(createdAt: matter.createdAt, source: matter.source)
             }
 
             Divider().overlay(DTColor.line)
