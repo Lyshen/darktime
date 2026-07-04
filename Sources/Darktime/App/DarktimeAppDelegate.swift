@@ -154,9 +154,6 @@ final class DarktimeAppDelegate: NSObject, NSApplicationDelegate {
         panel.makeKeyAndOrderFront(nil)
         DispatchQueue.main.async {
             panel.makeKey()
-            if let textField = panel.contentView?.firstSubview(of: QuickCaptureTextField.self) {
-                panel.makeFirstResponder(textField)
-            }
         }
     }
 
@@ -192,4 +189,3 @@ extension DarktimeAppDelegate: NSWindowDelegate {
         panel.orderOut(nil)
     }
 }
-
