@@ -28,17 +28,20 @@ struct InboxListWorkspace: View {
                         )
                         .padding(.top, 34)
                     } else {
-                        LazyVStack(spacing: 11) {
-                            ForEach(model.inboxMatters, id: \.id) { matter in
-                                InboxMatterSlip(matter: matter)
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(model.inboxMatters.enumerated()), id: \.element.id) { index, matter in
+                                InboxMatterLine(
+                                    matter: matter,
+                                    isLast: index == model.inboxMatters.count - 1
+                                )
                             }
                         }
                     }
                 }
-                .frame(maxWidth: 680)
+                .frame(maxWidth: 660)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 36)
-                .padding(.top, 28)
+                .padding(.top, 20)
                 .padding(.bottom, 36)
             }
         }
@@ -80,33 +83,43 @@ private struct InboxHeader: View {
     }
 }
 
-private struct InboxMatterSlip: View {
+private struct InboxMatterLine: View {
     let matter: MatterSnapshot
+    let isLast: Bool
+
+    @State private var isHovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(matter.text)
-                .font(.system(size: 15, weight: .regular, design: .default))
-                .foregroundStyle(DTColor.text)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 9) {
+                Text(matter.text)
+                    .font(.system(size: 15, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.text)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            HStack {
-                Spacer(minLength: 16)
-                MatterMetaLine(createdAt: matter.createdAt, source: matter.source)
+                HStack {
+                    Spacer(minLength: 16)
+                    MatterMetaLine(createdAt: matter.createdAt, source: matter.source)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 15)
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(isHovered ? Color.black.opacity(0.018) : Color.clear)
+            )
+            .onHover { hovering in
+                isHovered = hovering
+            }
+
+            if !isLast {
+                Rectangle()
+                    .fill(Color.black.opacity(0.055))
+                    .frame(height: 1)
+                    .padding(.horizontal, 8)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 10)
-        .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(Color.black.opacity(0.018))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 7)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
-        )
     }
 }
