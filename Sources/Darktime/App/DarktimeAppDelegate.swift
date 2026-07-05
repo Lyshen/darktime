@@ -43,6 +43,11 @@ final class DarktimeAppDelegate: NSObject, NSApplicationDelegate {
         showMainWindow()
     }
 
+    @objc func showShortcutCaptureFromMenu(_ sender: Any?) {
+        model?.selectedSection = .shortcutCapture
+        showMainWindow()
+    }
+
     @objc func showDroppedFromMenu(_ sender: Any?) {
         model?.selectedSection = .dropped
         showMainWindow()

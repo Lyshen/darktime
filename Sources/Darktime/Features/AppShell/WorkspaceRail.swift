@@ -43,6 +43,7 @@ struct WorkspaceRail: View {
         case .inbox: return model.inboxMatters.count
         case .rootbox: return model.rootboxMatters.count
         case .dropped: return nil
+        case .shortcutCapture: return nil
         case .calendar: return nil
         }
     }
@@ -87,4 +88,3 @@ struct RailItemButton: View {
         }
     }
 }
-

@@ -63,9 +63,10 @@ struct DarktimeDashboard: View {
             RootboxWorkspace(model: model)
         case .dropped:
             DroppedWorkspace(model: model)
+        case .shortcutCapture:
+            ShortcutCaptureWorkspace(model: model)
         case .calendar:
             CalendarWorkspace(model: model)
         }
     }
 }
-

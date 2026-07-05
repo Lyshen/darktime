@@ -14,6 +14,8 @@ final class DashboardModel: ObservableObject {
     @Published var matters: [MatterSnapshot] = []
     @Published var storageReady = false
     @Published var storageError: String?
+    @Published var shortcutPendingCount = 0
+    @Published var shortcutFailedCount = 0
     @Published var isRequestingAccess = false
     @Published var copiedCommand = false
     @Published var quickCaptureDraft: String {
@@ -30,6 +32,18 @@ final class DashboardModel: ObservableObject {
 
     var dbPath: String {
         MatterRepository.databasePath
+    }
+
+    var shortcutInboxPath: String {
+        MatterRepository.shortcutInboxPath
+    }
+
+    var shortcutImportedPath: String {
+        MatterRepository.shortcutImportedPath
+    }
+
+    var shortcutFailedPath: String {
+        MatterRepository.shortcutFailedPath
     }
 
     var writableCalendars: [CalendarSnapshot] {
@@ -142,6 +156,40 @@ final class DashboardModel: ObservableObject {
         }
     }
 
+    func prepareShortcutCaptureFolders() {
+        do {
+            try MatterRepository.ensureShortcutFolders()
+            refreshShortcutCounts()
+        } catch {
+            storageError = String(describing: error)
+        }
+    }
+
+    @discardableResult
+    func createShortcutTestCapture() -> Bool {
+        do {
+            try MatterRepository.createShortcutTestCapture(
+                text: "Darktime Shortcut test capture"
+            )
+            refresh()
+            return true
+        } catch {
+            storageReady = false
+            storageError = String(describing: error)
+            return false
+        }
+    }
+
+    func openShortcutInboxFolder() {
+        prepareShortcutCaptureFolders()
+        NSWorkspace.shared.open(URL(fileURLWithPath: shortcutInboxPath, isDirectory: true))
+    }
+
+    func openShortcutFailedFolder() {
+        prepareShortcutCaptureFolders()
+        NSWorkspace.shared.open(URL(fileURLWithPath: shortcutFailedPath, isDirectory: true))
+    }
+
     func mcpCommand() -> String {
         MCPCommandProvider.command()
     }
@@ -151,6 +199,7 @@ final class DashboardModel: ObservableObject {
             let snapshot = try MatterRepository.refreshSnapshot()
             sessions = snapshot.sessions
             matters = snapshot.matters
+            refreshShortcutCounts()
             storageReady = true
             storageError = nil
         } catch {
@@ -158,6 +207,16 @@ final class DashboardModel: ObservableObject {
             matters = []
             storageReady = false
             storageError = String(describing: error)
+        }
+    }
+
+    private func refreshShortcutCounts() {
+        do {
+            shortcutPendingCount = try MatterRepository.shortcutPendingFileCount()
+            shortcutFailedCount = try MatterRepository.shortcutFailedFileCount()
+        } catch {
+            shortcutPendingCount = 0
+            shortcutFailedCount = 0
         }
     }
 

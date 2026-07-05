@@ -10,6 +10,7 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
     case inbox
     case rootbox
     case dropped
+    case shortcutCapture
     case calendar
 
     var id: String { rawValue }
@@ -20,6 +21,7 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
         case .inbox: return "Inbox"
         case .rootbox: return "Rootbox"
         case .dropped: return "Dropped"
+        case .shortcutCapture: return "Shortcut Capture"
         case .calendar: return "Calendar"
         }
     }
@@ -30,6 +32,7 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
         case .inbox: return "tray.fill"
         case .rootbox: return "tree.fill"
         case .dropped: return "xmark.circle"
+        case .shortcutCapture: return "iphone"
         case .calendar: return "calendar"
         }
     }
