@@ -6,6 +6,8 @@ Rootbox is not a task list or a permanent archive.
 
 For this MVP, a Root is a container for something worth sustained attention.
 
+Rootbox's default view is the user's current attention model. It should not show every old project by default.
+
 Root identity is the stable `root.id`.
 
 ```text
@@ -35,7 +37,6 @@ last commit time
 latest commit message
 commits in last 7 days
 commits in last 30 days
-local uncommitted changes
 ```
 
 This keeps the first Rootbox version local-first and avoids OAuth, tokens, and cloud permissions.
@@ -73,7 +74,6 @@ The seed matter is then marked done, because its meaning has moved into the Root
 Local repo roots use simple state rules:
 
 ```text
-working  -> local uncommitted changes, shown as a separate signal
 alive    -> commit in last 2 days
 quiet    -> last commit within 7 days
 fading   -> last commit within 30 days
@@ -87,6 +87,23 @@ Seeds use simple age rules:
 seed   -> touched within 7 days
 fading -> untouched for more than 7 days
 ```
+
+## Visibility
+
+Rootbox uses a quiet lens menu:
+
+```text
+Current  -> alive, quiet, fresh seeds
+Fading   -> fading projects
+Withered -> withered projects
+All      -> every root and seed
+```
+
+The default lens is `Current`.
+
+Fading and withered roots are not counted or pushed into the main view. They stay available for review only when the user chooses to look.
+
+Local uncommitted changes are intentionally not shown in the main Rootbox view yet. Rootbox should reflect attention traces, not become a git status panel.
 
 ## Why This MVP
 
@@ -124,4 +141,6 @@ Darktime should not copy GitHub's green-dot anxiety. It should show which roots 
 - Rootbox shows local repo roots and seed matters separately.
 - Repo roots show recent action signals.
 - Existing Rootbox matters remain visible as seeds.
+- Current view only shows alive/quiet roots and fresh seeds.
+- Fading and withered roots are hidden behind the lens filter.
 - No GitHub account or network access is required.

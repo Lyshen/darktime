@@ -7,39 +7,57 @@ import SwiftUI
 
 struct RootboxWorkspace: View {
     @ObservedObject var model: DashboardModel
+    @State private var lens: RootboxLens = .current
+
+    private var visibleRepos: [LocalRepoSnapshot] {
+        model.localRepoSnapshots.filter { lens.includes(repo: $0) }
+    }
+
+    private var visibleSeeds: [MatterSnapshot] {
+        switch lens {
+        case .current:
+            return model.rootboxMatters.filter { rootboxSeedState(for: $0) == "seed" }
+        case .fading:
+            return model.rootboxMatters.filter { rootboxSeedState(for: $0) == "fading" }
+        case .withered:
+            return []
+        case .all:
+            return model.rootboxMatters
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            RootboxTopBar(model: model)
+            RootboxTopBar(model: model, lens: $lens)
             Divider().overlay(DTColor.line.opacity(0.7))
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    if model.localRepoSnapshots.isEmpty && model.rootboxMatters.isEmpty {
+                    if visibleRepos.isEmpty && visibleSeeds.isEmpty {
                         EmptyStateLine(
                             systemImage: "tree",
-                            title: "No roots yet",
-                            detail: "Add a local repo or keep a matter from Inbox."
+                            title: emptyTitle,
+                            detail: emptyDetail
                         )
                     } else {
-                        if !model.localRepoSnapshots.isEmpty {
+                        if !visibleRepos.isEmpty {
                             RootboxSectionTitle("Projects")
                             VStack(spacing: 0) {
-                                ForEach(model.localRepoSnapshots, id: \.root.id) { repo in
-                                    LocalRepoRootRow(model: model, repo: repo)
-                                    if repo.root.id != model.localRepoSnapshots.last?.root.id {
+                                ForEach(visibleRepos, id: \.root.id) { repo in
+                                    LocalRepoRootRow(model: model, repo: repo, lens: lens)
+                                    if repo.root.id != visibleRepos.last?.root.id {
                                         RootboxHairline()
                                     }
                                 }
                             }
                         }
 
-                        if !model.rootboxMatters.isEmpty {
+                        if !visibleSeeds.isEmpty {
                             RootboxSectionTitle("Seeds")
                             VStack(spacing: 0) {
-                                ForEach(model.rootboxMatters, id: \.id) { matter in
+                                ForEach(visibleSeeds, id: \.id) { matter in
                                     SeedRootRow(model: model, matter: matter)
-                                    if matter.id != model.rootboxMatters.last?.id {
+                                    if matter.id != visibleSeeds.last?.id {
                                         RootboxHairline()
                                     }
                                 }
@@ -56,10 +74,29 @@ struct RootboxWorkspace: View {
         }
         .background(DTColor.workspace)
     }
+
+    private var emptyTitle: String {
+        switch lens {
+        case .current: return "No current roots"
+        case .fading: return "No fading roots"
+        case .withered: return "No withered roots"
+        case .all: return "No roots yet"
+        }
+    }
+
+    private var emptyDetail: String {
+        switch lens {
+        case .current: return "Add a local repo or keep a matter from Inbox."
+        case .fading: return "Roots will appear here when they start to drift."
+        case .withered: return "Old roots stay out of sight until you choose to review them."
+        case .all: return "Add a local repo or keep a matter from Inbox."
+        }
+    }
 }
 
 private struct RootboxTopBar: View {
     @ObservedObject var model: DashboardModel
+    @Binding var lens: RootboxLens
 
     var body: some View {
         HStack(spacing: 9) {
@@ -71,9 +108,7 @@ private struct RootboxTopBar: View {
                 .font(.system(size: 13, weight: .semibold, design: .default))
                 .foregroundStyle(DTColor.text)
             Spacer()
-            QuietHeaderButton("Refresh") {
-                model.refreshRepoRoots()
-            }
+            RootboxLensMenu(selection: $lens)
             QuietHeaderButton("Add Repo") {
                 model.addLocalRepoRoot()
             }
@@ -81,6 +116,65 @@ private struct RootboxTopBar: View {
         .padding(.horizontal, 20)
         .frame(height: 46)
         .background(DTColor.workspace)
+    }
+}
+
+private enum RootboxLens: String, CaseIterable, Identifiable {
+    case current = "Current"
+    case fading = "Fading"
+    case withered = "Withered"
+    case all = "All"
+
+    var id: String { rawValue }
+
+    func includes(repo: LocalRepoSnapshot) -> Bool {
+        switch self {
+        case .current:
+            return repo.state == "alive" || repo.state == "quiet" || repo.state == "seed"
+        case .fading:
+            return repo.state == "fading"
+        case .withered:
+            return repo.state == "withered"
+        case .all:
+            return true
+        }
+    }
+}
+
+private struct RootboxLensMenu: View {
+    @Binding var selection: RootboxLens
+
+    var body: some View {
+        Menu {
+            ForEach(RootboxLens.allCases) { lens in
+                Button {
+                    selection = lens
+                } label: {
+                    if selection == lens {
+                        Label(lens.rawValue, systemImage: "checkmark")
+                    } else {
+                        Text(lens.rawValue)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease")
+                    .font(.system(size: 12, weight: .regular))
+            }
+            .foregroundStyle(DTColor.text)
+            .frame(width: 28, height: 25)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 }
 
@@ -102,6 +196,7 @@ private struct RootboxSectionTitle: View {
 private struct LocalRepoRootRow: View {
     @ObservedObject var model: DashboardModel
     let repo: LocalRepoSnapshot
+    let lens: RootboxLens
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
@@ -119,11 +214,8 @@ private struct LocalRepoRootRow: View {
                         .foregroundStyle(DTColor.text)
                         .lineLimit(1)
                     RootStateTag(text: repo.state, tint: stateTint)
-                    if repo.hasUncommittedChanges {
-                        RootStateTag(text: "working", tint: DTColor.amber)
-                    }
                     Spacer()
-                    Text(actionSummary)
+                    Text(timeSummary)
                         .font(.system(size: 11, weight: .regular, design: .monospaced))
                         .foregroundStyle(DTColor.dimmed)
                         .lineLimit(1)
@@ -170,9 +262,9 @@ private struct LocalRepoRootRow: View {
         }
     }
 
-    private var actionSummary: String {
+    private var timeSummary: String {
         if let lastCommitAt = repo.lastCommitAt {
-            return formatRelative(lastCommitAt)
+            return formatRootboxTime(lastCommitAt, lens: lens)
         }
         return "no commits"
     }
@@ -228,10 +320,7 @@ private struct SeedRootRow: View {
     }
 
     private var seedState: String {
-        guard let date = parseISODate(matter.updatedAt) else {
-            return "seed"
-        }
-        return Date().timeIntervalSince(date) > 7 * 86_400 ? "fading" : "seed"
+        rootboxSeedState(for: matter)
     }
 
     private var seedTint: Color {
@@ -243,6 +332,48 @@ private struct SeedRootRow: View {
             ? "No external trace yet. Still worth keeping?"
             : "Kept from Inbox. It has not grown a repo root yet."
     }
+}
+
+private func rootboxSeedState(for matter: MatterSnapshot) -> String {
+    guard let date = parseISODate(matter.updatedAt) else {
+        return "seed"
+    }
+    return Date().timeIntervalSince(date) > 7 * 86_400 ? "fading" : "seed"
+}
+
+private func formatRootboxTime(_ isoString: String, lens: RootboxLens) -> String {
+    guard let date = parseISODate(isoString) else {
+        return isoString
+    }
+
+    if lens == .current || Calendar.current.isDateInToday(date) {
+        return formatRootboxRelative(date)
+    }
+
+    let days = max(1, Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 1)
+    return "\(days)d ago · \(formatRootboxMonthDay(date))"
+}
+
+private func formatRootboxRelative(_ date: Date) -> String {
+    let seconds = max(0, Int(Date().timeIntervalSince(date)))
+    if seconds < 60 {
+        return "now"
+    }
+    if seconds < 3600 {
+        return "\(seconds / 60)m ago"
+    }
+    if seconds < 86_400 {
+        return "\(seconds / 3600)h ago"
+    }
+
+    let days = max(1, seconds / 86_400)
+    return "\(days)d ago"
+}
+
+private func formatRootboxMonthDay(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "MMM d"
+    return formatter.string(from: date)
 }
 
 private struct RootStateTag: View {
