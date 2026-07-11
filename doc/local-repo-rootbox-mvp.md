@@ -81,6 +81,15 @@ withered -> last commit older than 30 days
 seed     -> repo has no commits yet
 ```
 
+Each repo row shows only one commit-count window:
+
+```text
+alive    -> commits in 2d
+quiet    -> commits in 7d
+fading   -> commits in 30d
+withered -> commits in 30d
+```
+
 Seeds use simple age rules:
 
 ```text

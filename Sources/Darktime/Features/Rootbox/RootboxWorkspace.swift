@@ -197,6 +197,7 @@ private struct LocalRepoRootRow: View {
     @ObservedObject var model: DashboardModel
     let repo: LocalRepoSnapshot
     let lens: RootboxLens
+    @State private var isTitleHovering = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
@@ -209,10 +210,19 @@ private struct LocalRepoRootRow: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(repo.root.title)
-                        .font(.system(size: 14, weight: .semibold, design: .default))
-                        .foregroundStyle(DTColor.text)
-                        .lineLimit(1)
+                    Button {
+                        model.openLocalRepo(repo)
+                    } label: {
+                        Text(repo.root.title)
+                            .font(.system(size: 14, weight: .semibold, design: .default))
+                            .foregroundStyle(DTColor.text)
+                            .underline(isTitleHovering, color: DTColor.text.opacity(0.45))
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hovering in
+                        isTitleHovering = hovering
+                    }
                     RootStateTag(text: repo.state, tint: stateTint)
                     Spacer()
                     Text(timeSummary)
@@ -234,14 +244,7 @@ private struct LocalRepoRootRow: View {
                     .lineLimit(2)
 
                 HStack(spacing: 12) {
-                    Text("\(repo.commitsLast7Days) in 7d")
-                    Text("\(repo.commitsLast30Days) in 30d")
-                    Spacer()
-                    Button("Open") {
-                        model.openLocalRepo(repo)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(DTColor.muted)
+                    Text(commitWindowSummary)
                 }
                 .font(.system(size: 11, weight: .regular, design: .default))
                 .foregroundStyle(DTColor.dimmed)
@@ -267,6 +270,19 @@ private struct LocalRepoRootRow: View {
             return formatRootboxTime(lastCommitAt, lens: lens)
         }
         return "no commits"
+    }
+
+    private var commitWindowSummary: String {
+        switch repo.state {
+        case "alive":
+            return "\(repo.commitsLast2Days) in 2d"
+        case "quiet":
+            return "\(repo.commitsLast7Days) in 7d"
+        case "fading", "withered":
+            return "\(repo.commitsLast30Days) in 30d"
+        default:
+            return "0 in 30d"
+        }
     }
 }
 

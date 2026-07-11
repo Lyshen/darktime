@@ -55,6 +55,7 @@ struct LocalRepoSnapshot {
     let branch: String
     let lastCommitAt: String?
     let latestCommitSummary: String?
+    let commitsLast2Days: Int
     let commitsLast7Days: Int
     let commitsLast30Days: Int
     let hasUncommittedChanges: Bool
