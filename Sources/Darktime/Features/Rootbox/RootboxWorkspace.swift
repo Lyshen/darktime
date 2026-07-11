@@ -14,21 +14,16 @@ struct RootboxWorkspace: View {
             Divider().overlay(DTColor.line.opacity(0.7))
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    RootboxIntroLine()
-
+                VStack(alignment: .leading, spacing: 22) {
                     if model.localRepoSnapshots.isEmpty && model.rootboxMatters.isEmpty {
                         EmptyStateLine(
                             systemImage: "tree",
-                            title: "Rootbox is empty",
-                            detail: "Add a local repo or keep a matter from Inbox to see what is trying to grow."
+                            title: "No roots yet",
+                            detail: "Add a local repo or keep a matter from Inbox."
                         )
                     } else {
                         if !model.localRepoSnapshots.isEmpty {
-                            RootboxSectionTitle(
-                                title: "Repo roots",
-                                detail: "Roots with local project traces."
-                            )
+                            RootboxSectionTitle("Projects")
                             VStack(spacing: 0) {
                                 ForEach(model.localRepoSnapshots, id: \.root.id) { repo in
                                     LocalRepoRootRow(model: model, repo: repo)
@@ -40,10 +35,7 @@ struct RootboxWorkspace: View {
                         }
 
                         if !model.rootboxMatters.isEmpty {
-                            RootboxSectionTitle(
-                                title: "Seeds",
-                                detail: "Kept matters that have not grown external traces yet."
-                            )
+                            RootboxSectionTitle("Seeds")
                             VStack(spacing: 0) {
                                 ForEach(model.rootboxMatters, id: \.id) { matter in
                                     SeedRootRow(model: model, matter: matter)
@@ -78,11 +70,6 @@ private struct RootboxTopBar: View {
             Text("Rootbox")
                 .font(.system(size: 13, weight: .semibold, design: .default))
                 .foregroundStyle(DTColor.text)
-            Text("Roots with real traces and seeds worth watching.")
-                .font(.system(size: 12, weight: .regular, design: .default))
-                .foregroundStyle(DTColor.muted)
-                .lineLimit(1)
-                .truncationMode(.tail)
             Spacer()
             QuietHeaderButton("Refresh") {
                 model.refreshRepoRoots()
@@ -97,33 +84,17 @@ private struct RootboxTopBar: View {
     }
 }
 
-private struct RootboxIntroLine: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("What is actually alive?")
-                .font(.system(size: 21, weight: .regular, design: .default))
-                .foregroundStyle(DTColor.text)
-            Text("Repo roots show recent action. Seeds are kept ideas still waiting for roots.")
-                .font(.system(size: 13, weight: .regular, design: .default))
-                .foregroundStyle(DTColor.muted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
 private struct RootboxSectionTitle: View {
     let title: String
-    let detail: String
+
+    init(_ title: String) {
+        self.title = title
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 13, weight: .semibold, design: .default))
-                .foregroundStyle(DTColor.text)
-            Text(detail)
-                .font(.system(size: 12, weight: .regular, design: .default))
-                .foregroundStyle(DTColor.dimmed)
-        }
+        Text(title)
+            .font(.system(size: 13, weight: .semibold, design: .default))
+            .foregroundStyle(DTColor.text)
         .padding(.bottom, 2)
     }
 }
@@ -143,16 +114,26 @@ private struct LocalRepoRootRow: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(repo.repoName)
+                    Text(repo.root.title)
                         .font(.system(size: 14, weight: .semibold, design: .default))
                         .foregroundStyle(DTColor.text)
                         .lineLimit(1)
                     RootStateTag(text: repo.state, tint: stateTint)
+                    if repo.hasUncommittedChanges {
+                        RootStateTag(text: "working", tint: DTColor.amber)
+                    }
                     Spacer()
                     Text(actionSummary)
                         .font(.system(size: 11, weight: .regular, design: .monospaced))
                         .foregroundStyle(DTColor.dimmed)
                         .lineLimit(1)
+                }
+
+                if let intention = repo.root.intention, !intention.isEmpty {
+                    Text(intention)
+                        .font(.system(size: 12, weight: .regular, design: .default))
+                        .foregroundStyle(DTColor.text.opacity(0.66))
+                        .lineLimit(2)
                 }
 
                 Text(repo.latestCommitSummary ?? "No commits yet")
@@ -161,13 +142,8 @@ private struct LocalRepoRootRow: View {
                     .lineLimit(2)
 
                 HStack(spacing: 12) {
-                    Text(repo.branch)
                     Text("\(repo.commitsLast7Days) in 7d")
                     Text("\(repo.commitsLast30Days) in 30d")
-                    if repo.hasUncommittedChanges {
-                        Text("local changes")
-                            .foregroundStyle(DTColor.amber)
-                    }
                     Spacer()
                     Button("Open") {
                         model.openLocalRepo(repo)
@@ -187,16 +163,14 @@ private struct LocalRepoRootRow: View {
         switch repo.state {
         case "alive": return DTColor.green
         case "quiet": return DTColor.cyan
-        case "stale": return DTColor.dimmed
+        case "fading": return DTColor.amber
+        case "withered": return DTColor.dimmed
         case "seed": return DTColor.amber
         default: return DTColor.red
         }
     }
 
     private var actionSummary: String {
-        if repo.hasUncommittedChanges {
-            return "working now"
-        }
         if let lastCommitAt = repo.lastCommitAt {
             return formatRelative(lastCommitAt)
         }
@@ -235,6 +209,9 @@ private struct SeedRootRow: View {
                     .foregroundStyle(DTColor.muted)
 
                 HStack(spacing: 14) {
+                    Button("Link Repo") {
+                        model.linkSeedToLocalRepo(matter)
+                    }
                     Button("Move to Inbox") {
                         model.moveMatter(matter, to: "inbox")
                     }

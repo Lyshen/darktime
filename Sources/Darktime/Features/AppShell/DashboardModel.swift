@@ -164,19 +164,11 @@ final class DashboardModel: ObservableObject {
     }
 
     func addLocalRepoRoot() {
-        let panel = NSOpenPanel()
-        panel.title = "Add Local Repo"
-        panel.prompt = "Add Repo"
-        panel.message = "Choose a local git repository to show its activity in Rootbox."
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-
-        guard panel.runModal() == .OK, let url = panel.url else {
+        guard let path = chooseLocalRepoPath(message: "Choose a local git repository to show its activity in Rootbox.") else {
             return
         }
 
-        addLocalRepoRoot(path: url.path)
+        addLocalRepoRoot(path: path)
     }
 
     func addLocalRepoRoot(path: String) {
@@ -194,12 +186,48 @@ final class DashboardModel: ObservableObject {
         }
     }
 
+    func linkSeedToLocalRepo(_ matter: MatterSnapshot) {
+        guard let path = chooseLocalRepoPath(message: "Choose a local git repository for this seed.") else {
+            return
+        }
+
+        do {
+            let repository = try LocalGitRepositoryService.resolveRepository(at: path)
+            _ = try MatterRepository.linkMatterToLocalRepoRoot(
+                matter: matter,
+                title: repository.title,
+                localPath: repository.rootPath
+            )
+            selectedSection = .rootbox
+            refresh()
+            refreshLocalRepoSnapshots(force: true)
+        } catch {
+            storageError = error.localizedDescription
+        }
+    }
+
     func refreshRepoRoots() {
         refreshLocalRepoSnapshots(force: true)
     }
 
     func openLocalRepo(_ repo: LocalRepoSnapshot) {
         NSWorkspace.shared.open(URL(fileURLWithPath: repo.rootPath, isDirectory: true))
+    }
+
+    private func chooseLocalRepoPath(message: String) -> String? {
+        let panel = NSOpenPanel()
+        panel.title = "Add Local Repo"
+        panel.prompt = "Add Repo"
+        panel.message = message
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return nil
+        }
+
+        return url.path
     }
 
     func prepareShortcutCaptureFolders() {
@@ -294,15 +322,16 @@ final class DashboardModel: ObservableObject {
     }
 
     private func localRepoSortKey(_ repo: LocalRepoSnapshot) -> String {
-        "\(localRepoStateRank(repo.state))-\(repo.repoName.lowercased())"
+        "\(localRepoStateRank(repo.state))-\(repo.root.title.lowercased())"
     }
 
     private func localRepoStateRank(_ state: String) -> String {
         switch state {
         case "alive": return "0"
         case "quiet": return "1"
-        case "stale": return "2"
-        case "seed": return "3"
+        case "fading": return "2"
+        case "withered": return "3"
+        case "seed": return "4"
         default: return "4"
         }
     }

@@ -41,6 +41,7 @@ struct MatterSnapshot {
 struct RootSnapshot {
     let id: String
     let title: String
+    let intention: String?
     let kind: String
     let localPath: String?
     let createdAt: String

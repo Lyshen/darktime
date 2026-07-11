@@ -6,6 +6,15 @@ Rootbox is not a task list or a permanent archive.
 
 For this MVP, a Root is a container for something worth sustained attention.
 
+Root identity is the stable `root.id`.
+
+```text
+title     -> short display name, defaults to the local repo name
+intention -> why this root deserves attention
+```
+
+The title can be practical and short. The intention carries the attention meaning.
+
 There are two visible forms:
 
 ```text
@@ -27,7 +36,6 @@ latest commit message
 commits in last 7 days
 commits in last 30 days
 local uncommitted changes
-current branch
 ```
 
 This keeps the first Rootbox version local-first and avoids OAuth, tokens, and cloud permissions.
@@ -51,15 +59,26 @@ The point is not to punish inactivity. The point is to make attention visible:
 This thing entered Rootbox. Has it grown any real trace?
 ```
 
+When a Seed is linked to a local repo:
+
+```text
+title     -> defaults to the repo name
+intention -> defaults to the seed text
+```
+
+The seed matter is then marked done, because its meaning has moved into the Root.
+
 ## States
 
 Local repo roots use simple state rules:
 
 ```text
-alive  -> uncommitted local changes or commit in last 7 days
-quiet  -> last commit within 30 days
-stale  -> last commit older than 30 days
-seed   -> repo has no commits yet
+working  -> local uncommitted changes, shown as a separate signal
+alive    -> commit in last 2 days
+quiet    -> last commit within 7 days
+fading   -> last commit within 30 days
+withered -> last commit older than 30 days
+seed     -> repo has no commits yet
 ```
 
 Seeds use simple age rules:
@@ -87,7 +106,7 @@ xrobotd
 
 Git commits are not the whole truth, but they are a useful action signal.
 
-Darktime should not copy GitHub's green-dot anxiety. It should show which roots are alive, quiet, stale, or still just seeds.
+Darktime should not copy GitHub's green-dot anxiety. It should show which roots are alive, quiet, fading, withered, or still just seeds.
 
 ## Out Of Scope
 

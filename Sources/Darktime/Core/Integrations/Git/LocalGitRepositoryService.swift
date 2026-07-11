@@ -38,7 +38,7 @@ enum LocalGitRepositoryService {
                 commitsLast7Days: commitCount(at: resolved.rootPath, since: "7 days ago"),
                 commitsLast30Days: commitCount(at: resolved.rootPath, since: "30 days ago"),
                 hasUncommittedChanges: hasUncommittedChanges,
-                state: state(lastCommitAt: latestCommit?.date, hasUncommittedChanges: hasUncommittedChanges)
+                state: state(lastCommitAt: latestCommit?.date)
             )
         } catch {
             return LocalRepoSnapshot(
@@ -112,10 +112,7 @@ enum LocalGitRepositoryService {
         return !(output?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
     }
 
-    private static func state(lastCommitAt: String?, hasUncommittedChanges: Bool) -> String {
-        if hasUncommittedChanges {
-            return "alive"
-        }
+    private static func state(lastCommitAt: String?) -> String {
         guard
             let lastCommitAt,
             let date = parseGitDate(lastCommitAt)
@@ -124,13 +121,16 @@ enum LocalGitRepositoryService {
         }
 
         let days = Date().timeIntervalSince(date) / 86_400
-        if days <= 7 {
+        if days <= 2 {
             return "alive"
         }
-        if days <= 30 {
+        if days <= 7 {
             return "quiet"
         }
-        return "stale"
+        if days <= 30 {
+            return "fading"
+        }
+        return "withered"
     }
 
     private static func parseGitDate(_ value: String) -> Date? {

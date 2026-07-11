@@ -123,6 +123,7 @@ enum LocalDatabase {
             CREATE TABLE IF NOT EXISTS roots (
               id TEXT PRIMARY KEY,
               title TEXT NOT NULL,
+              intention TEXT,
               kind TEXT NOT NULL,
               local_path TEXT UNIQUE,
               created_at TEXT NOT NULL,
@@ -139,6 +140,7 @@ enum LocalDatabase {
             """,
             db: db
         )
+        try migrateRoots(db: db)
     }
 
     static func importShortcutInbox() throws -> Int {
@@ -236,9 +238,10 @@ enum LocalDatabase {
         )
     }
 
-    static func createLocalRepoRoot(title: String, localPath: String) throws -> RootSnapshot {
+    static func createLocalRepoRoot(title: String, localPath: String, intention: String? = nil) throws -> RootSnapshot {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPath = localPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedIntention = intention?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else {
             throw StorageError.invalidInput("Root title cannot be empty.")
         }
@@ -250,6 +253,27 @@ enum LocalDatabase {
         defer { sqlite3_close(db) }
 
         if let existing = try root(localPath: trimmedPath, db: db) {
+            if existing.intention == nil, let intention = normalizedOptional(trimmedIntention) {
+                let now = isoNow()
+                try executePrepared(
+                    """
+                    UPDATE roots
+                    SET intention = ?, updated_at = ?
+                    WHERE id = ?;
+                    """,
+                    values: [intention, now, existing.id],
+                    db: db
+                )
+                return RootSnapshot(
+                    id: existing.id,
+                    title: existing.title,
+                    intention: intention,
+                    kind: existing.kind,
+                    localPath: existing.localPath,
+                    createdAt: existing.createdAt,
+                    updatedAt: now
+                )
+            }
             return existing
         }
 
@@ -260,24 +284,36 @@ enum LocalDatabase {
             INSERT INTO roots (
               id,
               title,
+              intention,
               kind,
               local_path,
               created_at,
               updated_at
-            ) VALUES (?, ?, 'local_repo', ?, ?, ?);
+            ) VALUES (?, ?, ?, 'local_repo', ?, ?, ?);
             """,
-            values: [id, trimmedTitle, trimmedPath, now, now],
+            values: [id, trimmedTitle, normalizedOptional(trimmedIntention), trimmedPath, now, now],
             db: db
         )
 
         return RootSnapshot(
             id: id,
             title: trimmedTitle,
+            intention: normalizedOptional(trimmedIntention),
             kind: "local_repo",
             localPath: trimmedPath,
             createdAt: now,
             updatedAt: now
         )
+    }
+
+    static func linkMatterToLocalRepoRoot(matter: MatterSnapshot, title: String, localPath: String) throws -> RootSnapshot {
+        let root = try createLocalRepoRoot(
+            title: title,
+            localPath: localPath,
+            intention: matter.text
+        )
+        _ = try updateMatterStatus(id: matter.id, status: "done")
+        return root
     }
 
     static func updateMatterStatus(id: String, status: String) throws -> MatterSnapshot {
@@ -411,7 +447,7 @@ enum LocalDatabase {
         defer { sqlite3_close(db) }
 
         let sql = """
-            SELECT id, title, kind, local_path, created_at, updated_at
+            SELECT id, title, intention, kind, local_path, created_at, updated_at
             FROM roots
             ORDER BY updated_at DESC
             LIMIT \(max(1, limit));
@@ -562,7 +598,7 @@ enum LocalDatabase {
     private static func root(localPath: String, db: OpaquePointer) throws -> RootSnapshot? {
         let rows = try queryPrepared(
             """
-            SELECT id, title, kind, local_path, created_at, updated_at
+            SELECT id, title, intention, kind, local_path, created_at, updated_at
             FROM roots
             WHERE local_path = ?
             LIMIT 1;
@@ -684,6 +720,16 @@ enum LocalDatabase {
         }
     }
 
+    private static func migrateRoots(db: OpaquePointer) throws {
+        do {
+            try exec("ALTER TABLE roots ADD COLUMN intention TEXT;", db: db)
+        } catch StorageError.sqlite(let message) where message.localizedCaseInsensitiveContains("duplicate column") {
+            return
+        } catch {
+            throw error
+        }
+    }
+
     private static func executePrepared(_ sql: String, values: [String?], db: OpaquePointer) throws {
         var statement: OpaquePointer?
         let prepareResult = sqlite3_prepare_v2(db, sql, -1, &statement, nil)
@@ -762,11 +808,19 @@ enum LocalDatabase {
         RootSnapshot(
             id: columnText(statement, 0) ?? "",
             title: columnText(statement, 1) ?? "",
-            kind: columnText(statement, 2) ?? "seed",
-            localPath: columnText(statement, 3),
-            createdAt: columnText(statement, 4) ?? "",
-            updatedAt: columnText(statement, 5) ?? ""
+            intention: columnText(statement, 2),
+            kind: columnText(statement, 3) ?? "seed",
+            localPath: columnText(statement, 4),
+            createdAt: columnText(statement, 5) ?? "",
+            updatedAt: columnText(statement, 6) ?? ""
         )
+    }
+
+    private static func normalizedOptional(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 
     private static func columnText(_ statement: OpaquePointer, _ index: Int32) -> String? {
