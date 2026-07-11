@@ -12,6 +12,18 @@ enum MatterRepository {
         LocalDatabase.databasePath()
     }
 
+    static var shortcutInboxPath: String {
+        LocalDatabase.shortcutsInboxPath()
+    }
+
+    static var shortcutImportedPath: String {
+        LocalDatabase.shortcutsImportedPath()
+    }
+
+    static var shortcutFailedPath: String {
+        LocalDatabase.shortcutsFailedPath()
+    }
+
     static func refreshSnapshot() throws -> MatterRepositorySnapshot {
         try LocalDatabase.ensureDatabase()
         _ = try LocalDatabase.importShortcutInbox()
@@ -29,5 +41,21 @@ enum MatterRepository {
 
     static func moveMatter(_ matter: MatterSnapshot, to status: String) throws -> MatterSnapshot {
         try LocalDatabase.updateMatterStatus(id: matter.id, status: status)
+    }
+
+    static func ensureShortcutFolders() throws {
+        try LocalDatabase.ensureShortcutFolders()
+    }
+
+    static func shortcutPendingFileCount() throws -> Int {
+        try LocalDatabase.shortcutPendingFileCount()
+    }
+
+    static func shortcutFailedFileCount() throws -> Int {
+        try LocalDatabase.shortcutFailedFileCount()
+    }
+
+    static func createShortcutTestCapture(text: String) throws {
+        try LocalDatabase.createShortcutTestCapture(text: text)
     }
 }

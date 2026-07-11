@@ -17,6 +17,11 @@ func configureApplicationMenu() {
         keyEquivalent: "n"
     )
     appMenu.addItem(
+        withTitle: "Shortcut Capture",
+        action: #selector(DarktimeAppDelegate.showShortcutCaptureFromMenu(_:)),
+        keyEquivalent: ""
+    )
+    appMenu.addItem(
         withTitle: "Calendar",
         action: #selector(DarktimeAppDelegate.showCalendarFromMenu(_:)),
         keyEquivalent: "k"
