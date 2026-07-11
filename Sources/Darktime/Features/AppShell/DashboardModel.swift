@@ -12,6 +12,8 @@ final class DashboardModel: ObservableObject {
     @Published var calendars: [CalendarSnapshot] = []
     @Published var sessions: [MCPSessionSnapshot] = []
     @Published var matters: [MatterSnapshot] = []
+    @Published var roots: [RootSnapshot] = []
+    @Published var localRepoSnapshots: [LocalRepoSnapshot] = []
     @Published var storageReady = false
     @Published var storageError: String?
     @Published var shortcutPendingCount = 0
@@ -25,6 +27,7 @@ final class DashboardModel: ObservableObject {
     }
 
     private let calendarService = AppleCalendarService()
+    private var lastLocalRepoRefreshAt: Date?
 
     init() {
         quickCaptureDraft = UserDefaults.standard.string(forKey: Self.quickCaptureDraftKey) ?? ""
@@ -68,6 +71,10 @@ final class DashboardModel: ObservableObject {
 
     var rootboxMatters: [MatterSnapshot] {
         matters.filter { $0.status == "rootbox" }
+    }
+
+    var rootboxItemCount: Int {
+        localRepoSnapshots.count + rootboxMatters.count
     }
 
     var droppedMatters: [MatterSnapshot] {
@@ -156,6 +163,45 @@ final class DashboardModel: ObservableObject {
         }
     }
 
+    func addLocalRepoRoot() {
+        let panel = NSOpenPanel()
+        panel.title = "Add Local Repo"
+        panel.prompt = "Add Repo"
+        panel.message = "Choose a local git repository to show its activity in Rootbox."
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        addLocalRepoRoot(path: url.path)
+    }
+
+    func addLocalRepoRoot(path: String) {
+        do {
+            let repository = try LocalGitRepositoryService.resolveRepository(at: path)
+            _ = try MatterRepository.createLocalRepoRoot(
+                title: repository.title,
+                localPath: repository.rootPath
+            )
+            selectedSection = .rootbox
+            refresh()
+            refreshLocalRepoSnapshots(force: true)
+        } catch {
+            storageError = error.localizedDescription
+        }
+    }
+
+    func refreshRepoRoots() {
+        refreshLocalRepoSnapshots(force: true)
+    }
+
+    func openLocalRepo(_ repo: LocalRepoSnapshot) {
+        NSWorkspace.shared.open(URL(fileURLWithPath: repo.rootPath, isDirectory: true))
+    }
+
     func prepareShortcutCaptureFolders() {
         do {
             try MatterRepository.ensureShortcutFolders()
@@ -199,14 +245,65 @@ final class DashboardModel: ObservableObject {
             let snapshot = try MatterRepository.refreshSnapshot()
             sessions = snapshot.sessions
             matters = snapshot.matters
+            roots = snapshot.roots
+            refreshLocalRepoSnapshotsIfNeeded()
             refreshShortcutCounts()
             storageReady = true
             storageError = nil
         } catch {
             sessions = []
             matters = []
+            roots = []
+            localRepoSnapshots = []
             storageReady = false
             storageError = String(describing: error)
+        }
+    }
+
+    private func refreshLocalRepoSnapshotsIfNeeded() {
+        let repoRoots = roots.filter { $0.kind == "local_repo" }
+        let knownIDs = Set(localRepoSnapshots.map(\.root.id))
+        let currentIDs = Set(repoRoots.map(\.id))
+        if knownIDs != currentIDs || lastLocalRepoRefreshAt == nil {
+            refreshLocalRepoSnapshots(force: true)
+            return
+        }
+
+        guard let lastLocalRepoRefreshAt else {
+            refreshLocalRepoSnapshots(force: true)
+            return
+        }
+
+        if Date().timeIntervalSince(lastLocalRepoRefreshAt) > 20 {
+            refreshLocalRepoSnapshots(force: true)
+        }
+    }
+
+    private func refreshLocalRepoSnapshots(force: Bool) {
+        guard force else {
+            refreshLocalRepoSnapshotsIfNeeded()
+            return
+        }
+
+        let repoRoots = roots.filter { $0.kind == "local_repo" }
+        localRepoSnapshots = repoRoots.compactMap(LocalGitRepositoryService.inspect(root:))
+            .sorted { left, right in
+                localRepoSortKey(left) < localRepoSortKey(right)
+            }
+        lastLocalRepoRefreshAt = Date()
+    }
+
+    private func localRepoSortKey(_ repo: LocalRepoSnapshot) -> String {
+        "\(localRepoStateRank(repo.state))-\(repo.repoName.lowercased())"
+    }
+
+    private func localRepoStateRank(_ state: String) -> String {
+        switch state {
+        case "alive": return "0"
+        case "quiet": return "1"
+        case "stale": return "2"
+        case "seed": return "3"
+        default: return "4"
         }
     }
 

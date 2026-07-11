@@ -3,6 +3,7 @@ import Foundation
 struct MatterRepositorySnapshot {
     let sessions: [MCPSessionSnapshot]
     let matters: [MatterSnapshot]
+    let roots: [RootSnapshot]
 }
 
 enum MatterRepository {
@@ -31,7 +32,8 @@ enum MatterRepository {
 
         return MatterRepositorySnapshot(
             sessions: try LocalDatabase.recentSessions(limit: 12),
-            matters: try LocalDatabase.recentMatters(limit: 180)
+            matters: try LocalDatabase.recentMatters(limit: 180),
+            roots: try LocalDatabase.recentRoots(limit: 80)
         )
     }
 
@@ -41,6 +43,10 @@ enum MatterRepository {
 
     static func moveMatter(_ matter: MatterSnapshot, to status: String) throws -> MatterSnapshot {
         try LocalDatabase.updateMatterStatus(id: matter.id, status: status)
+    }
+
+    static func createLocalRepoRoot(title: String, localPath: String) throws -> RootSnapshot {
+        try LocalDatabase.createLocalRepoRoot(title: title, localPath: localPath)
     }
 
     static func ensureShortcutFolders() throws {

@@ -38,6 +38,28 @@ struct MatterSnapshot {
     let rawPayloadJson: String?
 }
 
+struct RootSnapshot {
+    let id: String
+    let title: String
+    let kind: String
+    let localPath: String?
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct LocalRepoSnapshot {
+    let root: RootSnapshot
+    let repoName: String
+    let rootPath: String
+    let branch: String
+    let lastCommitAt: String?
+    let latestCommitSummary: String?
+    let commitsLast7Days: Int
+    let commitsLast30Days: Int
+    let hasUncommittedChanges: Bool
+    let state: String
+}
+
 struct MatterLogSnapshot {
     let id: Int64
     let matterId: String

@@ -120,6 +120,14 @@ enum LocalDatabase {
               metadata_json TEXT,
               FOREIGN KEY (matter_id) REFERENCES matters(id)
             );
+            CREATE TABLE IF NOT EXISTS roots (
+              id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              kind TEXT NOT NULL,
+              local_path TEXT UNIQUE,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_seen ON mcp_sessions(last_seen_at DESC);
             CREATE INDEX IF NOT EXISTS idx_action_logs_created_at ON action_logs(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_action_logs_session_id ON action_logs(session_id);
@@ -127,6 +135,7 @@ enum LocalDatabase {
             CREATE INDEX IF NOT EXISTS idx_matters_created_at ON matters(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_matter_logs_created_at ON matter_logs(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_matter_logs_matter_id ON matter_logs(matter_id);
+            CREATE INDEX IF NOT EXISTS idx_roots_kind_updated ON roots(kind, updated_at DESC);
             """,
             db: db
         )
@@ -224,6 +233,50 @@ enum LocalDatabase {
             createdAt: now,
             updatedAt: now,
             rawPayloadJson: rawPayloadJson
+        )
+    }
+
+    static func createLocalRepoRoot(title: String, localPath: String) throws -> RootSnapshot {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPath = localPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            throw StorageError.invalidInput("Root title cannot be empty.")
+        }
+        guard !trimmedPath.isEmpty else {
+            throw StorageError.invalidInput("Local repo path cannot be empty.")
+        }
+
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        if let existing = try root(localPath: trimmedPath, db: db) {
+            return existing
+        }
+
+        let id = UUID().uuidString
+        let now = isoNow()
+        try executePrepared(
+            """
+            INSERT INTO roots (
+              id,
+              title,
+              kind,
+              local_path,
+              created_at,
+              updated_at
+            ) VALUES (?, ?, 'local_repo', ?, ?, ?);
+            """,
+            values: [id, trimmedTitle, trimmedPath, now, now],
+            db: db
+        )
+
+        return RootSnapshot(
+            id: id,
+            title: trimmedTitle,
+            kind: "local_repo",
+            localPath: trimmedPath,
+            createdAt: now,
+            updatedAt: now
         )
     }
 
@@ -351,6 +404,20 @@ enum LocalDatabase {
         }
 
         return try queryPrepared(sql, values: values, db: db, row: matterSnapshot)
+    }
+
+    static func recentRoots(limit: Int = 80) throws -> [RootSnapshot] {
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        let sql = """
+            SELECT id, title, kind, local_path, created_at, updated_at
+            FROM roots
+            ORDER BY updated_at DESC
+            LIMIT \(max(1, limit));
+            """
+
+        return try query(sql, db: db, row: rootSnapshot)
     }
 
     static func recentMatterLogs(limit: Int = 30) throws -> [MatterLogSnapshot] {
@@ -488,6 +555,21 @@ enum LocalDatabase {
             values: [id],
             db: db,
             row: matterSnapshot
+        )
+        return rows.first
+    }
+
+    private static func root(localPath: String, db: OpaquePointer) throws -> RootSnapshot? {
+        let rows = try queryPrepared(
+            """
+            SELECT id, title, kind, local_path, created_at, updated_at
+            FROM roots
+            WHERE local_path = ?
+            LIMIT 1;
+            """,
+            values: [localPath],
+            db: db,
+            row: rootSnapshot
         )
         return rows.first
     }
@@ -673,6 +755,17 @@ enum LocalDatabase {
             createdAt: columnText(statement, 4) ?? "",
             updatedAt: columnText(statement, 5) ?? "",
             rawPayloadJson: columnText(statement, 6)
+        )
+    }
+
+    private static func rootSnapshot(_ statement: OpaquePointer) -> RootSnapshot {
+        RootSnapshot(
+            id: columnText(statement, 0) ?? "",
+            title: columnText(statement, 1) ?? "",
+            kind: columnText(statement, 2) ?? "seed",
+            localPath: columnText(statement, 3),
+            createdAt: columnText(statement, 4) ?? "",
+            updatedAt: columnText(statement, 5) ?? ""
         )
     }
 

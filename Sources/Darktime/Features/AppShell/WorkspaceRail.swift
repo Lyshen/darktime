@@ -41,7 +41,7 @@ struct WorkspaceRail: View {
         switch section {
         case .capture: return nil
         case .inbox: return model.inboxMatters.count
-        case .rootbox: return model.rootboxMatters.count
+        case .rootbox: return model.rootboxItemCount
         case .dropped: return nil
         case .shortcutCapture: return nil
         case .calendar: return nil
