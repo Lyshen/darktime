@@ -289,50 +289,52 @@ private struct LocalRepoRootRow: View {
 private struct SeedRootRow: View {
     @ObservedObject var model: DashboardModel
     let matter: MatterSnapshot
+    @State private var isHovering = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 13) {
-            Image(systemName: "leaf.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(seedTint)
-                .frame(width: 28, height: 28)
-                .background(seedTint.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 7))
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 13) {
+                Image(systemName: "leaf.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(seedTint)
+                    .frame(width: 28, height: 28)
+                    .background(seedTint.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
 
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(matter.text)
-                        .font(.system(size: 14, weight: .regular, design: .default))
-                        .foregroundStyle(DTColor.text)
-                        .fixedSize(horizontal: false, vertical: true)
-                    RootStateTag(text: seedState, tint: seedTint)
-                    Spacer()
-                    Text(formatRelative(matter.updatedAt))
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                        .foregroundStyle(DTColor.dimmed)
-                }
-
-                Text(seedDetail)
-                    .font(.system(size: 12, weight: .regular, design: .default))
-                    .foregroundStyle(DTColor.muted)
-
-                HStack(spacing: 14) {
-                    Button("Link Repo") {
-                        model.linkSeedToLocalRepo(matter)
-                    }
-                    Button("Move to Inbox") {
-                        model.moveMatter(matter, to: "inbox")
-                    }
-                    Button("Drop") {
-                        model.moveMatter(matter, to: "dropped")
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(matter.text)
+                            .font(.system(size: 14, weight: .regular, design: .default))
+                            .foregroundStyle(DTColor.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                        RootStateTag(text: seedState, tint: seedTint)
+                        Spacer()
+                        Text(formatRelative(matter.updatedAt))
+                            .font(.system(size: 11, weight: .regular, design: .monospaced))
+                            .foregroundStyle(DTColor.dimmed)
                     }
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .regular, design: .default))
-                .foregroundStyle(DTColor.muted)
             }
+
+            HStack(spacing: 14) {
+                Spacer()
+                Button("Link Repo") {
+                    model.linkSeedToLocalRepo(matter)
+                }
+                Button("Drop") {
+                    model.moveMatter(matter, to: "dropped")
+                }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: .regular, design: .default))
+            .foregroundStyle(DTColor.muted)
+            .opacity(isHovering ? 1 : 0)
         }
         .padding(.vertical, 13)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovering = hovering
+        }
     }
 
     private var seedState: String {
@@ -343,11 +345,6 @@ private struct SeedRootRow: View {
         seedState == "fading" ? DTColor.dimmed : DTColor.amber
     }
 
-    private var seedDetail: String {
-        seedState == "fading"
-            ? "No external trace yet. Still worth keeping?"
-            : "Kept from Inbox. It has not grown a repo root yet."
-    }
 }
 
 private func rootboxSeedState(for matter: MatterSnapshot) -> String {
