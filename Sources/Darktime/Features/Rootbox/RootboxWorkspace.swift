@@ -146,6 +146,7 @@ private struct RootboxTopBar: View {
                 .font(.system(size: 13, weight: .semibold, design: .default))
                 .foregroundStyle(DTColor.text)
             Spacer()
+            RootTraceSyncStatus(model: model)
             RootboxModeSwitch(selection: $mode)
             if mode == .roots {
                 RootboxLensMenu(selection: $lens)
@@ -159,6 +160,86 @@ private struct RootboxTopBar: View {
         .padding(.horizontal, 20)
         .frame(height: 46)
         .background(DTColor.workspace)
+    }
+}
+
+private struct RootTraceSyncStatus: View {
+    @ObservedObject var model: DashboardModel
+
+    var body: some View {
+        if shouldShow {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .medium))
+                Text(label)
+                    .font(.system(size: 11, weight: .regular, design: .default))
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7)
+            .frame(height: 23)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.035))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.black.opacity(0.055), lineWidth: 1)
+            )
+            .help(helpText)
+        }
+    }
+
+    private var shouldShow: Bool {
+        model.isSyncingTraces ||
+            model.traceSyncError != nil ||
+            model.traceSyncLastFinishedAt != nil ||
+            !model.localRepoSnapshots.isEmpty
+    }
+
+    private var label: String {
+        if model.isSyncingTraces {
+            return "Syncing"
+        }
+        if model.traceSyncError != nil {
+            return "Sync failed"
+        }
+        if let lastFinishedAt = model.traceSyncLastFinishedAt {
+            return "Synced \(formatRelative(lastFinishedAt))"
+        }
+        return "Not synced"
+    }
+
+    private var helpText: String {
+        if let error = model.traceSyncError {
+            return error
+        }
+        if model.isSyncingTraces {
+            return "Syncing local git output traces."
+        }
+        if let lastFinishedAt = model.traceSyncLastFinishedAt {
+            return "Last sync \(formatLocalDateTime(lastFinishedAt)). \(model.traceSyncLastChangeCount) traces changed."
+        }
+        return "Local git traces have not synced yet."
+    }
+
+    private var systemImage: String {
+        if model.isSyncingTraces {
+            return "arrow.triangle.2.circlepath"
+        }
+        if model.traceSyncError != nil {
+            return "exclamationmark.triangle"
+        }
+        return "checkmark.circle"
+    }
+
+    private var tint: Color {
+        if model.isSyncingTraces {
+            return DTColor.cyan
+        }
+        if model.traceSyncError != nil {
+            return DTColor.amber
+        }
+        return DTColor.dimmed
     }
 }
 
