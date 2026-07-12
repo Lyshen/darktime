@@ -21,6 +21,8 @@ final class DashboardModel: ObservableObject {
     @Published var isRequestingAccess = false
     @Published var isSyncingTraces = false
     @Published var traceSyncError: String?
+    @Published var traceSyncLastFinishedAt: String?
+    @Published var traceSyncLastChangeCount = 0
     @Published var copiedCommand = false
     @Published var quickCaptureDraft: String {
         didSet {
@@ -441,12 +443,15 @@ final class DashboardModel: ObservableObject {
                 self.isSyncingTraces = false
                 self.lastLocalRepoTraceSyncAt = Date()
                 switch result {
-                case .success:
+                case .success(let changedCount):
                     self.traceSyncError = nil
+                    self.traceSyncLastFinishedAt = ISO8601DateFormatter().string(from: Date())
+                    self.traceSyncLastChangeCount = changedCount
                     self.lastLocalRepoTraceSyncRootIDs = rootIDsToSync
                     self.refreshStorage()
                 case .failure(let error):
                     self.traceSyncError = error.localizedDescription
+                    self.traceSyncLastFinishedAt = ISO8601DateFormatter().string(from: Date())
                 }
             }
         }
