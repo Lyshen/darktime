@@ -223,22 +223,19 @@ private struct LocalRepoRootRow: View {
                             .lineLimit(1)
                     }
                     .buttonStyle(.plain)
+                    .layoutPriority(2)
                     .onHover { hovering in
                         isTitleHovering = hovering
                     }
-                    RootStateTag(text: repo.state, tint: stateTint)
-                    Spacer()
-                    Text(timeSummary)
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                        .foregroundStyle(DTColor.dimmed)
-                        .lineLimit(1)
-                }
 
-                if let intention = repo.root.intention, !intention.isEmpty {
-                    Text(intention)
-                        .font(.system(size: 12, weight: .regular, design: .default))
-                        .foregroundStyle(DTColor.text.opacity(0.66))
-                        .lineLimit(2)
+                    if let intentionText {
+                        Text(intentionText)
+                            .font(.system(size: 12, weight: .regular, design: .default))
+                            .foregroundStyle(DTColor.text.opacity(0.5))
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
                 }
 
                 Text(repo.latestCommitSummary ?? "No commits yet")
@@ -246,28 +243,37 @@ private struct LocalRepoRootRow: View {
                     .foregroundStyle(DTColor.muted)
                     .lineLimit(2)
 
-                HStack(spacing: 12) {
-                    Text(commitWindowSummary)
+                HStack {
+                    Spacer()
+                    ZStack(alignment: .trailing) {
+                        RootActivityMetaGroup(
+                            time: timeSummary,
+                            count: commitWindowSummary,
+                            state: repo.state,
+                            tint: stateTint
+                        )
+                        .opacity(isRowHovering ? 0 : 1)
+
+                        HStack(spacing: 4) {
+                            RootboxRowActionButton("Edit") {
+                                isEditing = true
+                            }
+                            RootboxRowActionButton("Remove", tint: DTColor.red) {
+                                isConfirmingRemoval = true
+                            }
+                        }
+                        .opacity(isRowHovering ? 1 : 0)
+                        .allowsHitTesting(isRowHovering)
+                    }
+                    .animation(.easeOut(duration: 0.12), value: isRowHovering)
                 }
+                .frame(height: 19)
                 .font(.system(size: 11, weight: .regular, design: .default))
                 .foregroundStyle(DTColor.dimmed)
                 .lineLimit(1)
             }
         }
         .padding(.vertical, 13)
-        .overlay(alignment: .bottomTrailing) {
-            HStack(spacing: 4) {
-                RootboxRowActionButton("Edit") {
-                    isEditing = true
-                }
-                RootboxRowActionButton("Remove", tint: DTColor.red) {
-                    isConfirmingRemoval = true
-                }
-            }
-            .opacity(isRowHovering ? 1 : 0)
-            .allowsHitTesting(isRowHovering)
-            .padding(.bottom, 8)
-        }
         .contentShape(Rectangle())
         .onHover { hovering in
             isRowHovering = hovering
@@ -283,6 +289,13 @@ private struct LocalRepoRootRow: View {
         } message: {
             Text("This will not delete the local repository.")
         }
+    }
+
+    private var intentionText: String? {
+        guard let intention = repo.root.intention?.trimmingCharacters(in: .whitespacesAndNewlines), !intention.isEmpty else {
+            return nil
+        }
+        return intention
     }
 
     private var stateTint: Color {
@@ -314,6 +327,41 @@ private struct LocalRepoRootRow: View {
         default:
             return "0 in 30d"
         }
+    }
+}
+
+private struct RootActivityMetaGroup: View {
+    let time: String
+    let count: String
+    let state: String
+    let tint: Color
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 6) {
+            Text(time)
+            Text("·")
+                .foregroundStyle(DTColor.dimmed.opacity(0.75))
+            Text(count)
+            RootActivityTag(text: state, tint: tint)
+        }
+        .font(.system(size: 11, weight: .regular, design: .monospaced))
+        .foregroundStyle(DTColor.dimmed)
+        .lineLimit(1)
+    }
+}
+
+private struct RootActivityTag: View {
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(.system(size: 8, weight: .bold, design: .default))
+            .foregroundStyle(tint.opacity(0.9))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(tint.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 }
 
