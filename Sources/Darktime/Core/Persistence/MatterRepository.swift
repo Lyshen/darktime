@@ -73,7 +73,12 @@ enum MatterRepository {
 
             do {
                 let repository = try LocalGitRepositoryService.resolveRepository(at: localPath)
-                return try LocalGitRepositoryService.commitTraces(at: repository.rootPath)
+                let scanWindow = try localGitScanWindow(for: root)
+                return try LocalGitRepositoryService.commitTraces(
+                    at: repository.rootPath,
+                    since: scanWindow.since,
+                    includeLatestFallback: scanWindow.includeLatestFallback
+                )
                     .map { commit in
                         OutputTraceUpsert(
                             rootId: root.id,
@@ -96,6 +101,28 @@ enum MatterRepository {
         }
 
         return try LocalDatabase.upsertOutputTraces(traces)
+    }
+
+    private static func localGitScanWindow(for root: RootSnapshot) throws -> (since: String, includeLatestFallback: Bool) {
+        guard
+            let latestTrace = try LocalDatabase.latestOutputTrace(
+                rootId: root.id,
+                source: "local_git",
+                kind: "commit"
+            ),
+            let latestDate = parseISODate(latestTrace.happenedAt)
+        else {
+            return ("1 year ago", true)
+        }
+
+        let overlapDate = latestDate.addingTimeInterval(-86_400)
+        return (ISO8601DateFormatter().string(from: overlapDate), false)
+    }
+
+    private static func parseISODate(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value)
     }
 
     static func ensureShortcutFolders() throws {

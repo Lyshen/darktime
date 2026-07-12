@@ -64,12 +64,16 @@ enum LocalGitRepositoryService {
         }
     }
 
-    static func commitTraces(at path: String, since: String = "1 year ago") throws -> [LocalGitCommitTrace] {
+    static func commitTraces(
+        at path: String,
+        since: String = "1 year ago",
+        includeLatestFallback: Bool = true
+    ) throws -> [LocalGitCommitTrace] {
         let recent = try gitCommitTraces(
             arguments: ["-C", path, "log", "--since=\(since)", "--max-count=800", "--format=%H%x1f%cI%x1f%s"]
         )
 
-        if !recent.isEmpty {
+        if !recent.isEmpty || !includeLatestFallback {
             return recent
         }
 

@@ -429,7 +429,12 @@ enum LocalDatabase {
                       kind = excluded.kind,
                       happened_at = excluded.happened_at,
                       summary = excluded.summary,
-                      metadata_json = excluded.metadata_json;
+                      metadata_json = excluded.metadata_json
+                    WHERE
+                      output_traces.kind IS NOT excluded.kind OR
+                      output_traces.happened_at IS NOT excluded.happened_at OR
+                      output_traces.summary IS NOT excluded.summary OR
+                      output_traces.metadata_json IS NOT excluded.metadata_json;
                     """,
                     values: [
                         UUID().uuidString,
@@ -616,6 +621,35 @@ enum LocalDatabase {
             """
 
         return try query(sql, db: db, row: outputTraceSnapshot)
+    }
+
+    static func latestOutputTrace(rootId: String, source: String, kind: String) throws -> OutputTraceSnapshot? {
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        let sql = """
+            SELECT
+              id,
+              root_id,
+              source,
+              kind,
+              external_id,
+              happened_at,
+              summary,
+              metadata_json,
+              created_at
+            FROM output_traces
+            WHERE root_id = ? AND source = ? AND kind = ?
+            ORDER BY happened_at DESC
+            LIMIT 1;
+            """
+
+        return try queryPrepared(
+            sql,
+            values: [rootId, source, kind],
+            db: db,
+            row: outputTraceSnapshot
+        ).first
     }
 
     static func recentMatterLogs(limit: Int = 30) throws -> [MatterLogSnapshot] {
