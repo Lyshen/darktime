@@ -7,7 +7,9 @@ import SwiftUI
 
 struct RootboxWorkspace: View {
     @ObservedObject var model: DashboardModel
+    @State private var mode: RootboxMode = .roots
     @State private var lens: RootboxLens = .current
+    @State private var timelineRange: RootTimelineRange = .thirtyDays
 
     private var visibleRepos: [LocalRepoSnapshot] {
         model.localRepoSnapshots.filter { lens.includes(repo: $0) }
@@ -28,48 +30,30 @@ struct RootboxWorkspace: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            RootboxTopBar(model: model, lens: $lens)
+            RootboxTopBar(
+                model: model,
+                mode: $mode,
+                lens: $lens,
+                timelineRange: $timelineRange
+            )
             Divider().overlay(DTColor.line.opacity(0.7))
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    if visibleRepos.isEmpty && visibleSeeds.isEmpty {
-                        EmptyStateLine(
-                            systemImage: "tree",
-                            title: emptyTitle,
-                            detail: emptyDetail
-                        )
-                    } else {
-                        if !visibleRepos.isEmpty {
-                            RootboxSectionTitle("Projects")
-                            VStack(spacing: 0) {
-                                ForEach(visibleRepos, id: \.root.id) { repo in
-                                    LocalRepoRootRow(model: model, repo: repo, lens: lens)
-                                    if repo.root.id != visibleRepos.last?.root.id {
-                                        RootboxHairline()
-                                    }
-                                }
-                            }
-                        }
-
-                        if !visibleSeeds.isEmpty {
-                            RootboxSectionTitle("Seeds")
-                            VStack(spacing: 0) {
-                                ForEach(visibleSeeds, id: \.id) { matter in
-                                    SeedRootRow(model: model, matter: matter)
-                                    if matter.id != visibleSeeds.last?.id {
-                                        RootboxHairline()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                .frame(maxWidth: 820, alignment: .leading)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 42)
-                .padding(.top, 28)
-                .padding(.bottom, 40)
+            switch mode {
+            case .roots:
+                RootboxRootsView(
+                    model: model,
+                    lens: lens,
+                    visibleRepos: visibleRepos,
+                    visibleSeeds: visibleSeeds,
+                    emptyTitle: emptyTitle,
+                    emptyDetail: emptyDetail
+                )
+            case .timeline:
+                RootTimelineWorkspace(
+                    repos: model.localRepoSnapshots,
+                    traces: model.outputTraces,
+                    range: timelineRange
+                )
             }
         }
         .background(DTColor.workspace)
@@ -94,9 +78,63 @@ struct RootboxWorkspace: View {
     }
 }
 
+private struct RootboxRootsView: View {
+    @ObservedObject var model: DashboardModel
+    let lens: RootboxLens
+    let visibleRepos: [LocalRepoSnapshot]
+    let visibleSeeds: [MatterSnapshot]
+    let emptyTitle: String
+    let emptyDetail: String
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                if visibleRepos.isEmpty && visibleSeeds.isEmpty {
+                    EmptyStateLine(
+                        systemImage: "tree",
+                        title: emptyTitle,
+                        detail: emptyDetail
+                    )
+                } else {
+                    if !visibleRepos.isEmpty {
+                        RootboxSectionTitle("Projects")
+                        VStack(spacing: 0) {
+                            ForEach(visibleRepos, id: \.root.id) { repo in
+                                LocalRepoRootRow(model: model, repo: repo, lens: lens)
+                                if repo.root.id != visibleRepos.last?.root.id {
+                                    RootboxHairline()
+                                }
+                            }
+                        }
+                    }
+
+                    if !visibleSeeds.isEmpty {
+                        RootboxSectionTitle("Seeds")
+                        VStack(spacing: 0) {
+                            ForEach(visibleSeeds, id: \.id) { matter in
+                                SeedRootRow(model: model, matter: matter)
+                                if matter.id != visibleSeeds.last?.id {
+                                    RootboxHairline()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: 820, alignment: .leading)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 42)
+            .padding(.top, 28)
+            .padding(.bottom, 40)
+        }
+    }
+}
+
 private struct RootboxTopBar: View {
     @ObservedObject var model: DashboardModel
+    @Binding var mode: RootboxMode
     @Binding var lens: RootboxLens
+    @Binding var timelineRange: RootTimelineRange
 
     var body: some View {
         HStack(spacing: 9) {
@@ -108,7 +146,13 @@ private struct RootboxTopBar: View {
                 .font(.system(size: 13, weight: .semibold, design: .default))
                 .foregroundStyle(DTColor.text)
             Spacer()
-            RootboxLensMenu(selection: $lens)
+            RootTraceSyncStatus(model: model)
+            RootboxModeSwitch(selection: $mode)
+            if mode == .roots {
+                RootboxLensMenu(selection: $lens)
+            } else {
+                RootTimelineRangePicker(selection: $timelineRange)
+            }
             QuietHeaderButton("Add Repo") {
                 model.addLocalRepoRoot()
             }
@@ -117,6 +161,93 @@ private struct RootboxTopBar: View {
         .frame(height: 46)
         .background(DTColor.workspace)
     }
+}
+
+private struct RootTraceSyncStatus: View {
+    @ObservedObject var model: DashboardModel
+
+    var body: some View {
+        if shouldShow {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .medium))
+                Text(label)
+                    .font(.system(size: 11, weight: .regular, design: .default))
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7)
+            .frame(height: 23)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.035))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.black.opacity(0.055), lineWidth: 1)
+            )
+            .help(helpText)
+        }
+    }
+
+    private var shouldShow: Bool {
+        model.isSyncingTraces ||
+            model.traceSyncError != nil ||
+            model.traceSyncLastFinishedAt != nil ||
+            !model.localRepoSnapshots.isEmpty
+    }
+
+    private var label: String {
+        if model.isSyncingTraces {
+            return "Syncing"
+        }
+        if model.traceSyncError != nil {
+            return "Sync failed"
+        }
+        if let lastFinishedAt = model.traceSyncLastFinishedAt {
+            return "Synced \(formatRelative(lastFinishedAt))"
+        }
+        return "Not synced"
+    }
+
+    private var helpText: String {
+        if let error = model.traceSyncError {
+            return error
+        }
+        if model.isSyncingTraces {
+            return "Syncing local git output traces."
+        }
+        if let lastFinishedAt = model.traceSyncLastFinishedAt {
+            return "Last sync \(formatLocalDateTime(lastFinishedAt)). \(model.traceSyncLastChangeCount) traces changed."
+        }
+        return "Local git traces have not synced yet."
+    }
+
+    private var systemImage: String {
+        if model.isSyncingTraces {
+            return "arrow.triangle.2.circlepath"
+        }
+        if model.traceSyncError != nil {
+            return "exclamationmark.triangle"
+        }
+        return "checkmark.circle"
+    }
+
+    private var tint: Color {
+        if model.isSyncingTraces {
+            return DTColor.cyan
+        }
+        if model.traceSyncError != nil {
+            return DTColor.amber
+        }
+        return DTColor.dimmed
+    }
+}
+
+private enum RootboxMode: String, CaseIterable, Identifiable {
+    case roots = "Roots"
+    case timeline = "Timeline"
+
+    var id: String { rawValue }
 }
 
 private enum RootboxLens: String, CaseIterable, Identifiable {
@@ -138,6 +269,36 @@ private enum RootboxLens: String, CaseIterable, Identifiable {
         case .all:
             return true
         }
+    }
+}
+
+private struct RootboxModeSwitch: View {
+    @Binding var selection: RootboxMode
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(RootboxMode.allCases) { mode in
+                Button {
+                    selection = mode
+                } label: {
+                    Text(mode.rawValue)
+                        .font(.system(size: 11, weight: .medium, design: .default))
+                        .foregroundStyle(selection == mode ? DTColor.text : DTColor.muted)
+                        .padding(.horizontal, 8)
+                        .frame(height: 23)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(selection == mode ? Color.white : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color.black.opacity(0.045))
+        )
     }
 }
 

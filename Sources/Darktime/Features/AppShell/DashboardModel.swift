@@ -14,6 +14,7 @@ final class DashboardModel: ObservableObject {
     @Published var matters: [MatterSnapshot] = []
     @Published var roots: [RootSnapshot] = []
     @Published var localRepoSnapshots: [LocalRepoSnapshot] = []
+    @Published var outputTraces: [OutputTraceSnapshot] = []
     @Published var storageReady = false
     @Published var storageError: String?
     @Published var shortcutPendingCount = 0
@@ -21,6 +22,8 @@ final class DashboardModel: ObservableObject {
     @Published var isRequestingAccess = false
     @Published var isSyncingTraces = false
     @Published var traceSyncError: String?
+    @Published var traceSyncLastFinishedAt: String?
+    @Published var traceSyncLastChangeCount = 0
     @Published var copiedCommand = false
     @Published var quickCaptureDraft: String {
         didSet {
@@ -307,6 +310,7 @@ final class DashboardModel: ObservableObject {
             sessions = snapshot.sessions
             matters = snapshot.matters
             roots = snapshot.roots
+            outputTraces = snapshot.outputTraces
             refreshLocalRepoSnapshots(from: snapshot.outputTraces)
             scheduleLocalRepoTraceSyncIfNeeded()
             refreshShortcutCounts()
@@ -317,6 +321,7 @@ final class DashboardModel: ObservableObject {
             matters = []
             roots = []
             localRepoSnapshots = []
+            outputTraces = []
             storageReady = false
             storageError = String(describing: error)
         }
@@ -441,12 +446,15 @@ final class DashboardModel: ObservableObject {
                 self.isSyncingTraces = false
                 self.lastLocalRepoTraceSyncAt = Date()
                 switch result {
-                case .success:
+                case .success(let changedCount):
                     self.traceSyncError = nil
+                    self.traceSyncLastFinishedAt = ISO8601DateFormatter().string(from: Date())
+                    self.traceSyncLastChangeCount = changedCount
                     self.lastLocalRepoTraceSyncRootIDs = rootIDsToSync
                     self.refreshStorage()
                 case .failure(let error):
                     self.traceSyncError = error.localizedDescription
+                    self.traceSyncLastFinishedAt = ISO8601DateFormatter().string(from: Date())
                 }
             }
         }

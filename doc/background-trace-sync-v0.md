@@ -85,6 +85,7 @@ For local git, `external_id` should be the commit hash so imports are idempotent
 - Move local git commit scanning into a background task.
 - Import local git commits into `output_traces`.
 - Keep UI responsive while sync runs.
+- Show a small Rootbox sync status for syncing, last synced, and failure states.
 - Build Rootbox state and Timeline from cached traces where possible.
 - Keep the existing local repo root UI behavior.
 
@@ -94,7 +95,7 @@ For local git, `external_id` should be the commit hash so imports are idempotent
 - GitHub OAuth.
 - File watcher.
 - Manual output logs.
-- Real-time sync indicators beyond a simple syncing/error state.
+- Full repo diagnostics UI.
 
 ## Why Not A Separate Service Yet
 
