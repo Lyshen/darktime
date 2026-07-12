@@ -187,8 +187,8 @@ private struct RootboxSectionTitle: View {
 
     var body: some View {
         Text(title)
-            .font(.system(size: 13, weight: .semibold, design: .default))
-            .foregroundStyle(DTColor.text)
+            .font(.system(size: 12, weight: .medium, design: .default))
+            .foregroundStyle(DTColor.dimmed)
         .padding(.bottom, 2)
     }
 }
@@ -217,7 +217,7 @@ private struct LocalRepoRootRow: View {
                         model.openLocalRepo(repo)
                     } label: {
                         Text(repo.root.title)
-                            .font(.system(size: 14, weight: .semibold, design: .default))
+                            .font(.system(size: 15, weight: .medium, design: .default))
                             .foregroundStyle(DTColor.text)
                             .underline(isTitleHovering, color: DTColor.text.opacity(0.45))
                             .lineLimit(1)
@@ -230,7 +230,7 @@ private struct LocalRepoRootRow: View {
 
                     if let intentionText {
                         Text(intentionText)
-                            .font(.system(size: 12, weight: .regular, design: .default))
+                            .font(.system(size: 13, weight: .regular, design: .default))
                             .foregroundStyle(DTColor.text.opacity(0.5))
                             .lineLimit(1)
                     }
@@ -239,7 +239,7 @@ private struct LocalRepoRootRow: View {
                 }
 
                 Text(repo.latestCommitSummary ?? "No commits yet")
-                    .font(.system(size: 12, weight: .regular, design: .default))
+                    .font(.system(size: 13, weight: .regular, design: .default))
                     .foregroundStyle(DTColor.muted)
                     .lineLimit(2)
 
@@ -254,7 +254,7 @@ private struct LocalRepoRootRow: View {
                         )
                         .opacity(isRowHovering ? 0 : 1)
 
-                        HStack(spacing: 4) {
+                        HStack(spacing: 2) {
                             RootboxRowActionButton("Edit") {
                                 isEditing = true
                             }
@@ -337,7 +337,7 @@ private struct RootActivityMetaGroup: View {
     let tint: Color
 
     var body: some View {
-        HStack(alignment: .center, spacing: 6) {
+        HStack(alignment: .center, spacing: 4) {
             Text(time)
             Text("·")
                 .foregroundStyle(DTColor.dimmed.opacity(0.75))
@@ -358,7 +358,7 @@ private struct RootActivityTag: View {
         Text(text.uppercased())
             .font(.system(size: 8, weight: .bold, design: .default))
             .foregroundStyle(tint.opacity(0.9))
-            .padding(.horizontal, 5)
+            .padding(.horizontal, 4)
             .padding(.vertical, 2)
             .background(tint.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 4))
@@ -465,8 +465,8 @@ private struct RootboxRowActionButton: View {
             Text(title)
                 .font(.system(size: 11, weight: .regular, design: .default))
                 .foregroundStyle(isHovering ? DTColor.text.opacity(0.78) : DTColor.muted)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 3)
                 .background(
                     RoundedRectangle(cornerRadius: 5)
                         .fill(isHovering ? Color.black.opacity(0.045) : Color.clear)
@@ -495,7 +495,7 @@ private struct SeedRootRow: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(matter.text)
-                    .font(.system(size: 14, weight: .regular, design: .default))
+                    .font(.system(size: 15, weight: .regular, design: .default))
                     .foregroundStyle(DTColor.text)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -509,7 +509,7 @@ private struct SeedRootRow: View {
                         )
                         .opacity(isHovering ? 0 : 1)
 
-                        HStack(spacing: 4) {
+                        HStack(spacing: 2) {
                             RootboxRowActionButton("Link Repo") {
                                 model.linkSeedToLocalRepo(matter)
                             }
@@ -551,7 +551,7 @@ private struct SeedActivityMetaGroup: View {
     let tint: Color
 
     var body: some View {
-        HStack(alignment: .center, spacing: 6) {
+        HStack(alignment: .center, spacing: 4) {
             Text(time)
             Text("·")
                 .foregroundStyle(DTColor.dimmed.opacity(0.75))
