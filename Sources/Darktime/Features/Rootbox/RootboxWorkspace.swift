@@ -197,7 +197,10 @@ private struct LocalRepoRootRow: View {
     @ObservedObject var model: DashboardModel
     let repo: LocalRepoSnapshot
     let lens: RootboxLens
+    @State private var isRowHovering = false
     @State private var isTitleHovering = false
+    @State private var isEditing = false
+    @State private var isConfirmingRemoval = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
@@ -252,6 +255,34 @@ private struct LocalRepoRootRow: View {
             }
         }
         .padding(.vertical, 13)
+        .overlay(alignment: .bottomTrailing) {
+            HStack(spacing: 4) {
+                RootboxRowActionButton("Edit") {
+                    isEditing = true
+                }
+                RootboxRowActionButton("Remove", tint: DTColor.red) {
+                    isConfirmingRemoval = true
+                }
+            }
+            .opacity(isRowHovering ? 1 : 0)
+            .allowsHitTesting(isRowHovering)
+            .padding(.bottom, 8)
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isRowHovering = hovering
+        }
+        .sheet(isPresented: $isEditing) {
+            RootEditSheet(model: model, root: repo.root)
+        }
+        .alert("Remove from Rootbox?", isPresented: $isConfirmingRemoval) {
+            Button("Remove", role: .destructive) {
+                model.removeRoot(repo.root)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will not delete the local repository.")
+        }
     }
 
     private var stateTint: Color {
@@ -282,6 +313,122 @@ private struct LocalRepoRootRow: View {
             return "\(repo.commitsLast30Days) in 30d"
         default:
             return "0 in 30d"
+        }
+    }
+}
+
+private struct RootEditSheet: View {
+    @ObservedObject var model: DashboardModel
+    let root: RootSnapshot
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var intention: String
+    @State private var errorMessage: String?
+
+    init(model: DashboardModel, root: RootSnapshot) {
+        self.model = model
+        self.root = root
+        _title = State(initialValue: root.title)
+        _intention = State(initialValue: root.intention ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Edit Root")
+                    .font(.system(size: 15, weight: .semibold, design: .default))
+                    .foregroundStyle(DTColor.text)
+                Text(root.localPath ?? "")
+                    .font(.system(size: 11, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.dimmed)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                TextField("Title", text: $title)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 13, weight: .regular, design: .default))
+
+                TextEditor(text: $intention)
+                    .font(.system(size: 13, weight: .regular, design: .default))
+                    .frame(height: 74)
+                    .padding(6)
+                    .background(Color.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                    )
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 11, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+                Button("Cancel") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Save") {
+                    save()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 420)
+        .background(DTColor.workspace)
+    }
+
+    private func save() {
+        let ok = model.updateRoot(
+            root,
+            title: title,
+            intention: intention
+        )
+        if ok {
+            dismiss()
+        } else {
+            errorMessage = model.storageError
+        }
+    }
+}
+
+private struct RootboxRowActionButton: View {
+    let title: String
+    let tint: Color
+    let action: () -> Void
+    @State private var isHovering = false
+
+    init(_ title: String, tint: Color = DTColor.muted, action: @escaping () -> Void) {
+        self.title = title
+        self.tint = tint
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .regular, design: .default))
+                .foregroundStyle(isHovering ? tint : DTColor.dimmed)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(isHovering ? Color.black.opacity(0.045) : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovering = hovering
         }
     }
 }

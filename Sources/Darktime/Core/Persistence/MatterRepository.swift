@@ -53,6 +53,14 @@ enum MatterRepository {
         try LocalDatabase.linkMatterToLocalRepoRoot(matter: matter, title: title, localPath: localPath)
     }
 
+    static func updateRoot(id: String, title: String, intention: String?) throws -> RootSnapshot {
+        try LocalDatabase.updateRoot(id: id, title: title, intention: intention)
+    }
+
+    static func removeRoot(id: String) throws {
+        try LocalDatabase.removeRoot(id: id)
+    }
+
     static func ensureShortcutFolders() throws {
         try LocalDatabase.ensureShortcutFolders()
     }

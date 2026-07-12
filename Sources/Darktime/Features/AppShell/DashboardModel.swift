@@ -210,6 +210,36 @@ final class DashboardModel: ObservableObject {
         refreshLocalRepoSnapshots(force: true)
     }
 
+    @discardableResult
+    func updateRoot(_ root: RootSnapshot, title: String, intention: String?) -> Bool {
+        do {
+            _ = try MatterRepository.updateRoot(
+                id: root.id,
+                title: title,
+                intention: intention
+            )
+            refresh()
+            refreshLocalRepoSnapshots(force: true)
+            return true
+        } catch {
+            storageError = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func removeRoot(_ root: RootSnapshot) -> Bool {
+        do {
+            try MatterRepository.removeRoot(id: root.id)
+            refresh()
+            refreshLocalRepoSnapshots(force: true)
+            return true
+        } catch {
+            storageError = error.localizedDescription
+            return false
+        }
+    }
+
     func openLocalRepo(_ repo: LocalRepoSnapshot) {
         NSWorkspace.shared.open(URL(fileURLWithPath: repo.rootPath, isDirectory: true))
     }

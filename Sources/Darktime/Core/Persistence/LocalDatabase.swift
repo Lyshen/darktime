@@ -316,6 +316,60 @@ enum LocalDatabase {
         return root
     }
 
+    static func updateRoot(id: String, title: String, intention: String?) throws -> RootSnapshot {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedIntention = intention?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            throw StorageError.invalidInput("Root title cannot be empty.")
+        }
+
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        guard let current = try root(id: id, db: db) else {
+            throw StorageError.notFound("Root \(id) was not found.")
+        }
+
+        let now = isoNow()
+        try executePrepared(
+            """
+            UPDATE roots
+            SET title = ?, intention = ?, updated_at = ?
+            WHERE id = ?;
+            """,
+            values: [trimmedTitle, normalizedOptional(trimmedIntention), now, id],
+            db: db
+        )
+
+        return RootSnapshot(
+            id: current.id,
+            title: trimmedTitle,
+            intention: normalizedOptional(trimmedIntention),
+            kind: current.kind,
+            localPath: current.localPath,
+            createdAt: current.createdAt,
+            updatedAt: now
+        )
+    }
+
+    static func removeRoot(id: String) throws {
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        guard try root(id: id, db: db) != nil else {
+            throw StorageError.notFound("Root \(id) was not found.")
+        }
+
+        try executePrepared(
+            """
+            DELETE FROM roots
+            WHERE id = ?;
+            """,
+            values: [id],
+            db: db
+        )
+    }
+
     static func updateMatterStatus(id: String, status: String) throws -> MatterSnapshot {
         guard matterStatuses.contains(status) else {
             throw StorageError.invalidInput("Unknown matter status '\(status)'.")
@@ -610,6 +664,21 @@ enum LocalDatabase {
         return rows.first
     }
 
+    private static func root(id: String, db: OpaquePointer) throws -> RootSnapshot? {
+        let rows = try queryPrepared(
+            """
+            SELECT id, title, intention, kind, local_path, created_at, updated_at
+            FROM roots
+            WHERE id = ?
+            LIMIT 1;
+            """,
+            values: [id],
+            db: db,
+            row: rootSnapshot
+        )
+        return rows.first
+    }
+
     private static func shortcutPayload(from fileURL: URL) throws -> (text: String, source: String, rawPayloadJson: String?) {
         let data = try Data(contentsOf: fileURL)
         if fileURL.pathExtension.lowercased() == "json" {
@@ -835,10 +904,17 @@ enum LocalDatabase {
     }
 }
 
-enum StorageError: Error {
+enum StorageError: LocalizedError {
     case sqlite(String)
     case invalidInput(String)
     case notFound(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .sqlite(let message), .invalidInput(let message), .notFound(let message):
+            return message
+        }
+    }
 }
 
 private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

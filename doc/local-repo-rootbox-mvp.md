@@ -17,6 +17,15 @@ intention -> why this root deserves attention
 
 The title can be practical and short. The intention carries the attention meaning.
 
+Local Repo Roots can be edited after creation:
+
+```text
+Edit   -> update title and intention
+Remove -> remove the root from Rootbox only
+```
+
+Remove does not delete the local repository.
+
 There are two visible forms:
 
 ```text
@@ -114,6 +123,8 @@ Fading and withered roots are not counted or pushed into the main view. They sta
 
 Local uncommitted changes are intentionally not shown in the main Rootbox view yet. Rootbox should reflect attention traces, not become a git status panel.
 
+Maintenance actions are hover-only. The row should stay quiet unless the user is intentionally managing it.
+
 ## Why This MVP
 
 The first question Rootbox should answer is:
@@ -152,4 +163,6 @@ Darktime should not copy GitHub's green-dot anxiety. It should show which roots 
 - Existing Rootbox matters remain visible as seeds.
 - Current view only shows alive/quiet roots and fresh seeds.
 - Fading and withered roots are hidden behind the lens filter.
+- Repo roots can be edited without changing the local repository.
+- Repo roots can be removed from Rootbox without deleting local files.
 - No GitHub account or network access is required.
