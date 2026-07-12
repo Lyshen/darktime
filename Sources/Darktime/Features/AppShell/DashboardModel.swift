@@ -19,6 +19,8 @@ final class DashboardModel: ObservableObject {
     @Published var shortcutPendingCount = 0
     @Published var shortcutFailedCount = 0
     @Published var isRequestingAccess = false
+    @Published var isSyncingTraces = false
+    @Published var traceSyncError: String?
     @Published var copiedCommand = false
     @Published var quickCaptureDraft: String {
         didSet {
@@ -27,7 +29,9 @@ final class DashboardModel: ObservableObject {
     }
 
     private let calendarService = AppleCalendarService()
-    private var lastLocalRepoRefreshAt: Date?
+    private var lastLocalRepoTraceSyncAt: Date?
+    private var lastLocalRepoTraceSyncRootIDs = Set<String>()
+    private var localRepoTraceSyncTask: Task<Void, Never>?
 
     init() {
         quickCaptureDraft = UserDefaults.standard.string(forKey: Self.quickCaptureDraftKey) ?? ""
@@ -180,7 +184,7 @@ final class DashboardModel: ObservableObject {
             )
             selectedSection = .rootbox
             refresh()
-            refreshLocalRepoSnapshots(force: true)
+            scheduleLocalRepoTraceSync(force: true)
         } catch {
             storageError = error.localizedDescription
         }
@@ -200,14 +204,14 @@ final class DashboardModel: ObservableObject {
             )
             selectedSection = .rootbox
             refresh()
-            refreshLocalRepoSnapshots(force: true)
+            scheduleLocalRepoTraceSync(force: true)
         } catch {
             storageError = error.localizedDescription
         }
     }
 
     func refreshRepoRoots() {
-        refreshLocalRepoSnapshots(force: true)
+        scheduleLocalRepoTraceSync(force: true)
     }
 
     @discardableResult
@@ -219,7 +223,7 @@ final class DashboardModel: ObservableObject {
                 intention: intention
             )
             refresh()
-            refreshLocalRepoSnapshots(force: true)
+            scheduleLocalRepoTraceSync(force: true)
             return true
         } catch {
             storageError = error.localizedDescription
@@ -232,7 +236,6 @@ final class DashboardModel: ObservableObject {
         do {
             try MatterRepository.removeRoot(id: root.id)
             refresh()
-            refreshLocalRepoSnapshots(force: true)
             return true
         } catch {
             storageError = error.localizedDescription
@@ -304,7 +307,8 @@ final class DashboardModel: ObservableObject {
             sessions = snapshot.sessions
             matters = snapshot.matters
             roots = snapshot.roots
-            refreshLocalRepoSnapshotsIfNeeded()
+            refreshLocalRepoSnapshots(from: snapshot.outputTraces)
+            scheduleLocalRepoTraceSyncIfNeeded()
             refreshShortcutCounts()
             storageReady = true
             storageError = nil
@@ -318,37 +322,134 @@ final class DashboardModel: ObservableObject {
         }
     }
 
-    private func refreshLocalRepoSnapshotsIfNeeded() {
+    private func refreshLocalRepoSnapshots(from traces: [OutputTraceSnapshot]) {
         let repoRoots = roots.filter { $0.kind == "local_repo" }
-        let knownIDs = Set(localRepoSnapshots.map(\.root.id))
-        let currentIDs = Set(repoRoots.map(\.id))
-        if knownIDs != currentIDs || lastLocalRepoRefreshAt == nil {
-            refreshLocalRepoSnapshots(force: true)
-            return
+        let tracesByRoot = Dictionary(grouping: traces.filter { $0.source == "local_git" && $0.kind == "commit" }, by: \.rootId)
+        localRepoSnapshots = repoRoots.compactMap { root in
+            cachedLocalRepoSnapshot(root: root, traces: tracesByRoot[root.id] ?? [])
         }
-
-        guard let lastLocalRepoRefreshAt else {
-            refreshLocalRepoSnapshots(force: true)
-            return
-        }
-
-        if Date().timeIntervalSince(lastLocalRepoRefreshAt) > 20 {
-            refreshLocalRepoSnapshots(force: true)
-        }
-    }
-
-    private func refreshLocalRepoSnapshots(force: Bool) {
-        guard force else {
-            refreshLocalRepoSnapshotsIfNeeded()
-            return
-        }
-
-        let repoRoots = roots.filter { $0.kind == "local_repo" }
-        localRepoSnapshots = repoRoots.compactMap(LocalGitRepositoryService.inspect(root:))
             .sorted { left, right in
                 localRepoSortKey(left) < localRepoSortKey(right)
             }
-        lastLocalRepoRefreshAt = Date()
+    }
+
+    private func cachedLocalRepoSnapshot(root: RootSnapshot, traces: [OutputTraceSnapshot]) -> LocalRepoSnapshot? {
+        guard let localPath = root.localPath else {
+            return nil
+        }
+
+        let sortedTraces = traces.sorted { $0.happenedAt > $1.happenedAt }
+        let latestTrace = sortedTraces.first
+
+        return LocalRepoSnapshot(
+            root: root,
+            repoName: URL(fileURLWithPath: localPath, isDirectory: true).lastPathComponent,
+            rootPath: localPath,
+            branch: "cached",
+            lastCommitAt: latestTrace?.happenedAt,
+            latestCommitSummary: latestTrace?.summary ?? (isSyncingTraces ? "Syncing local git..." : "No cached commits yet"),
+            commitsLast2Days: traceCount(in: sortedTraces, days: 2),
+            commitsLast7Days: traceCount(in: sortedTraces, days: 7),
+            commitsLast30Days: traceCount(in: sortedTraces, days: 30),
+            hasUncommittedChanges: false,
+            state: localRepoState(lastOutputAt: latestTrace?.happenedAt)
+        )
+    }
+
+    private func traceCount(in traces: [OutputTraceSnapshot], days: Int) -> Int {
+        let cutoff = Date().addingTimeInterval(-Double(days) * 86_400)
+        return traces.filter { trace in
+            guard let date = parseISODate(trace.happenedAt) else {
+                return false
+            }
+            return date >= cutoff
+        }.count
+    }
+
+    private func localRepoState(lastOutputAt: String?) -> String {
+        guard
+            let lastOutputAt,
+            let date = parseISODate(lastOutputAt)
+        else {
+            return "seed"
+        }
+
+        let days = Date().timeIntervalSince(date) / 86_400
+        if days <= 2 {
+            return "alive"
+        }
+        if days <= 7 {
+            return "quiet"
+        }
+        if days <= 30 {
+            return "fading"
+        }
+        return "withered"
+    }
+
+    private func scheduleLocalRepoTraceSyncIfNeeded() {
+        let currentIDs = Set(roots.filter { $0.kind == "local_repo" }.map(\.id))
+        let rootsChanged = lastLocalRepoTraceSyncRootIDs != currentIDs
+
+        if rootsChanged || lastLocalRepoTraceSyncAt == nil {
+            scheduleLocalRepoTraceSync(force: true)
+            return
+        }
+
+        guard let lastLocalRepoTraceSyncAt else {
+            scheduleLocalRepoTraceSync(force: true)
+            return
+        }
+
+        if Date().timeIntervalSince(lastLocalRepoTraceSyncAt) > 120 {
+            scheduleLocalRepoTraceSync(force: false)
+        }
+    }
+
+    private func scheduleLocalRepoTraceSync(force: Bool) {
+        let repoRoots = roots.filter { $0.kind == "local_repo" }
+        guard !repoRoots.isEmpty else {
+            localRepoTraceSyncTask?.cancel()
+            localRepoTraceSyncTask = nil
+            isSyncingTraces = false
+            return
+        }
+
+        if isSyncingTraces {
+            return
+        }
+
+        if !force, let lastLocalRepoTraceSyncAt, Date().timeIntervalSince(lastLocalRepoTraceSyncAt) < 120 {
+            return
+        }
+
+        isSyncingTraces = true
+        traceSyncError = nil
+        let rootsToSync = repoRoots
+        let rootIDsToSync = Set(repoRoots.map(\.id))
+        localRepoTraceSyncTask = Task { [weak self, rootsToSync] in
+            let result = await Task.detached(priority: .utility) {
+                Result {
+                    try MatterRepository.syncLocalGitTraces(roots: rootsToSync)
+                }
+            }.value
+
+            await MainActor.run {
+                guard let self else {
+                    return
+                }
+                self.isSyncingTraces = false
+                self.lastLocalRepoTraceSyncAt = Date()
+                switch result {
+                case .success:
+                    self.traceSyncError = nil
+                    self.lastLocalRepoTraceSyncRootIDs = rootIDsToSync
+                    self.refreshStorage()
+                case .failure(let error):
+                    self.traceSyncError = error.localizedDescription
+                }
+            }
+        }
     }
 
     private func localRepoSortKey(_ repo: LocalRepoSnapshot) -> String {

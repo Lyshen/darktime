@@ -129,6 +129,18 @@ enum LocalDatabase {
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS output_traces (
+              id TEXT PRIMARY KEY,
+              root_id TEXT NOT NULL,
+              source TEXT NOT NULL,
+              kind TEXT NOT NULL,
+              external_id TEXT NOT NULL,
+              happened_at TEXT NOT NULL,
+              summary TEXT,
+              metadata_json TEXT,
+              created_at TEXT NOT NULL,
+              UNIQUE(root_id, source, external_id)
+            );
             CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_seen ON mcp_sessions(last_seen_at DESC);
             CREATE INDEX IF NOT EXISTS idx_action_logs_created_at ON action_logs(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_action_logs_session_id ON action_logs(session_id);
@@ -137,6 +149,8 @@ enum LocalDatabase {
             CREATE INDEX IF NOT EXISTS idx_matter_logs_created_at ON matter_logs(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_matter_logs_matter_id ON matter_logs(matter_id);
             CREATE INDEX IF NOT EXISTS idx_roots_kind_updated ON roots(kind, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_output_traces_root_happened ON output_traces(root_id, happened_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_output_traces_source_kind ON output_traces(source, kind, happened_at DESC);
             """,
             db: db
         )
@@ -360,14 +374,85 @@ enum LocalDatabase {
             throw StorageError.notFound("Root \(id) was not found.")
         }
 
-        try executePrepared(
-            """
-            DELETE FROM roots
-            WHERE id = ?;
-            """,
-            values: [id],
-            db: db
-        )
+        try exec("BEGIN TRANSACTION;", db: db)
+        do {
+            try executePrepared(
+                """
+                DELETE FROM output_traces
+                WHERE root_id = ?;
+                """,
+                values: [id],
+                db: db
+            )
+            try executePrepared(
+                """
+                DELETE FROM roots
+                WHERE id = ?;
+                """,
+                values: [id],
+                db: db
+            )
+            try exec("COMMIT;", db: db)
+        } catch {
+            try? exec("ROLLBACK;", db: db)
+            throw error
+        }
+    }
+
+    static func upsertOutputTraces(_ traces: [OutputTraceUpsert]) throws -> Int {
+        guard !traces.isEmpty else {
+            return 0
+        }
+
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        let now = isoNow()
+        var changedCount = 0
+        try exec("BEGIN TRANSACTION;", db: db)
+        do {
+            for trace in traces {
+                try executePrepared(
+                    """
+                    INSERT INTO output_traces (
+                      id,
+                      root_id,
+                      source,
+                      kind,
+                      external_id,
+                      happened_at,
+                      summary,
+                      metadata_json,
+                      created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(root_id, source, external_id) DO UPDATE SET
+                      kind = excluded.kind,
+                      happened_at = excluded.happened_at,
+                      summary = excluded.summary,
+                      metadata_json = excluded.metadata_json;
+                    """,
+                    values: [
+                        UUID().uuidString,
+                        trace.rootId,
+                        trace.source,
+                        trace.kind,
+                        trace.externalId,
+                        trace.happenedAt,
+                        trace.summary,
+                        trace.metadataJson,
+                        now
+                    ],
+                    db: db
+                )
+                changedCount += sqlite3_changes(db) > 0 ? 1 : 0
+            }
+            try exec("COMMIT;", db: db)
+        } catch {
+            try? exec("ROLLBACK;", db: db)
+            throw error
+        }
+
+        return changedCount
     }
 
     static func updateMatterStatus(id: String, status: String) throws -> MatterSnapshot {
@@ -508,6 +593,29 @@ enum LocalDatabase {
             """
 
         return try query(sql, db: db, row: rootSnapshot)
+    }
+
+    static func recentOutputTraces(limit: Int = 5_000) throws -> [OutputTraceSnapshot] {
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        let sql = """
+            SELECT
+              id,
+              root_id,
+              source,
+              kind,
+              external_id,
+              happened_at,
+              summary,
+              metadata_json,
+              created_at
+            FROM output_traces
+            ORDER BY happened_at DESC
+            LIMIT \(max(1, limit));
+            """
+
+        return try query(sql, db: db, row: outputTraceSnapshot)
     }
 
     static func recentMatterLogs(limit: Int = 30) throws -> [MatterLogSnapshot] {
@@ -882,6 +990,20 @@ enum LocalDatabase {
             localPath: columnText(statement, 4),
             createdAt: columnText(statement, 5) ?? "",
             updatedAt: columnText(statement, 6) ?? ""
+        )
+    }
+
+    private static func outputTraceSnapshot(_ statement: OpaquePointer) -> OutputTraceSnapshot {
+        OutputTraceSnapshot(
+            id: columnText(statement, 0) ?? "",
+            rootId: columnText(statement, 1) ?? "",
+            source: columnText(statement, 2) ?? "",
+            kind: columnText(statement, 3) ?? "",
+            externalId: columnText(statement, 4),
+            happenedAt: columnText(statement, 5) ?? "",
+            summary: columnText(statement, 6),
+            metadataJson: columnText(statement, 7),
+            createdAt: columnText(statement, 8) ?? ""
         )
     }
 

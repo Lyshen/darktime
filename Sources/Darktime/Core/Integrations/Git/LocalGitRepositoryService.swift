@@ -1,5 +1,11 @@
 import Foundation
 
+struct LocalGitCommitTrace: Sendable {
+    let hash: String
+    let date: String
+    let summary: String
+}
+
 enum LocalGitRepositoryService {
     static func resolveRepository(at path: String) throws -> (title: String, rootPath: String) {
         let rootPath = try runGit(
@@ -58,6 +64,20 @@ enum LocalGitRepositoryService {
         }
     }
 
+    static func commitTraces(at path: String, since: String = "1 year ago") throws -> [LocalGitCommitTrace] {
+        let recent = try gitCommitTraces(
+            arguments: ["-C", path, "log", "--since=\(since)", "--max-count=800", "--format=%H%x1f%cI%x1f%s"]
+        )
+
+        if !recent.isEmpty {
+            return recent
+        }
+
+        return try gitCommitTraces(
+            arguments: ["-C", path, "log", "-1", "--format=%H%x1f%cI%x1f%s"]
+        )
+    }
+
     private static func currentBranch(at path: String) -> String {
         let branch = (try? runGit(
             arguments: ["-C", path, "branch", "--show-current"],
@@ -96,6 +116,25 @@ enum LocalGitRepositoryService {
             date: String(date),
             summary: parts.count > 1 ? String(parts[1]) : "Commit"
         )
+    }
+
+    private static func gitCommitTraces(arguments: [String]) throws -> [LocalGitCommitTrace] {
+        let output = try runGit(arguments: arguments, allowFailure: false)
+
+        return output
+            .split(separator: "\n")
+            .compactMap { line in
+                let parts = line.split(separator: "\u{1f}", maxSplits: 2, omittingEmptySubsequences: false)
+                guard parts.count >= 2 else {
+                    return nil
+                }
+
+                return LocalGitCommitTrace(
+                    hash: String(parts[0]),
+                    date: String(parts[1]),
+                    summary: parts.count > 2 ? String(parts[2]) : "Commit"
+                )
+            }
     }
 
     private static func commitCount(at path: String, since: String) -> Int {
@@ -141,7 +180,7 @@ enum LocalGitRepositoryService {
         return formatter.date(from: value)
     }
 
-    private static func runGit(arguments: [String], allowFailure: Bool) throws -> String {
+    private static func runGit(arguments: [String], allowFailure: Bool, timeout: TimeInterval = 8) throws -> String {
         let process = Process()
         let output = Pipe()
         let error = Pipe()
@@ -151,7 +190,16 @@ enum LocalGitRepositoryService {
         process.standardError = error
 
         try process.run()
-        process.waitUntilExit()
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+
+        if process.isRunning {
+            process.terminate()
+            process.waitUntilExit()
+            throw LocalGitRepositoryError.commandFailed("Git command timed out.")
+        }
 
         let outputData = output.fileHandleForReading.readDataToEndOfFile()
         let errorData = error.fileHandleForReading.readDataToEndOfFile()
