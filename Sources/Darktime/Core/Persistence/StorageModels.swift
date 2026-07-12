@@ -1,6 +1,6 @@
 import Foundation
 
-struct MCPSessionSnapshot {
+struct MCPSessionSnapshot: Sendable {
     let id: String
     let clientName: String
     let clientVersion: String?
@@ -12,7 +12,7 @@ struct MCPSessionSnapshot {
     let toolCallCount: Int
 }
 
-struct ActionLogSnapshot {
+struct ActionLogSnapshot: Sendable {
     let id: Int64
     let createdAt: String
     let sessionId: String?
@@ -28,7 +28,7 @@ struct ActionLogSnapshot {
     let responseJson: String?
 }
 
-struct MatterSnapshot {
+struct MatterSnapshot: Sendable {
     let id: String
     let text: String
     let status: String
@@ -38,7 +38,7 @@ struct MatterSnapshot {
     let rawPayloadJson: String?
 }
 
-struct RootSnapshot {
+struct RootSnapshot: Sendable {
     let id: String
     let title: String
     let intention: String?
@@ -48,7 +48,7 @@ struct RootSnapshot {
     let updatedAt: String
 }
 
-struct LocalRepoSnapshot {
+struct LocalRepoSnapshot: Sendable {
     let root: RootSnapshot
     let repoName: String
     let rootPath: String
@@ -62,13 +62,35 @@ struct LocalRepoSnapshot {
     let state: String
 }
 
-struct MatterLogSnapshot {
+struct MatterLogSnapshot: Sendable {
     let id: Int64
     let matterId: String
     let createdAt: String
     let action: String
     let fromStatus: String?
     let toStatus: String?
+    let summary: String?
+    let metadataJson: String?
+}
+
+struct OutputTraceSnapshot: Sendable {
+    let id: String
+    let rootId: String
+    let source: String
+    let kind: String
+    let externalId: String?
+    let happenedAt: String
+    let summary: String?
+    let metadataJson: String?
+    let createdAt: String
+}
+
+struct OutputTraceUpsert: Sendable {
+    let rootId: String
+    let source: String
+    let kind: String
+    let externalId: String
+    let happenedAt: String
     let summary: String?
     let metadataJson: String?
 }

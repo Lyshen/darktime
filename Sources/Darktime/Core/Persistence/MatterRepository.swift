@@ -4,6 +4,7 @@ struct MatterRepositorySnapshot {
     let sessions: [MCPSessionSnapshot]
     let matters: [MatterSnapshot]
     let roots: [RootSnapshot]
+    let outputTraces: [OutputTraceSnapshot]
 }
 
 enum MatterRepository {
@@ -33,7 +34,8 @@ enum MatterRepository {
         return MatterRepositorySnapshot(
             sessions: try LocalDatabase.recentSessions(limit: 12),
             matters: try LocalDatabase.recentMatters(limit: 180),
-            roots: try LocalDatabase.recentRoots(limit: 80)
+            roots: try LocalDatabase.recentRoots(limit: 80),
+            outputTraces: try LocalDatabase.recentOutputTraces(limit: 5_000)
         )
     }
 
@@ -59,6 +61,41 @@ enum MatterRepository {
 
     static func removeRoot(id: String) throws {
         try LocalDatabase.removeRoot(id: id)
+    }
+
+    @discardableResult
+    static func syncLocalGitTraces(roots: [RootSnapshot]) throws -> Int {
+        var failedRoots: [String] = []
+        let traces = roots.flatMap { root -> [OutputTraceUpsert] in
+            guard let localPath = root.localPath else {
+                return []
+            }
+
+            do {
+                let repository = try LocalGitRepositoryService.resolveRepository(at: localPath)
+                return try LocalGitRepositoryService.commitTraces(at: repository.rootPath)
+                    .map { commit in
+                        OutputTraceUpsert(
+                            rootId: root.id,
+                            source: "local_git",
+                            kind: "commit",
+                            externalId: commit.hash,
+                            happenedAt: commit.date,
+                            summary: commit.summary,
+                            metadataJson: nil
+                        )
+                    }
+            } catch {
+                failedRoots.append(root.title)
+                return []
+            }
+        }
+
+        if traces.isEmpty, !failedRoots.isEmpty {
+            throw StorageError.invalidInput("Unable to sync local git traces for \(failedRoots.joined(separator: ", ")).")
+        }
+
+        return try LocalDatabase.upsertOutputTraces(traces)
     }
 
     static func ensureShortcutFolders() throws {
