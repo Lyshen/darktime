@@ -46,6 +46,7 @@ last commit time
 latest commit message
 commits in last 7 days
 commits in last 30 days
+cached commit output traces
 ```
 
 This keeps the first Rootbox version local-first and avoids OAuth, tokens, and cloud permissions.
@@ -125,6 +126,30 @@ Local uncommitted changes are intentionally not shown in the main Rootbox view y
 
 Maintenance actions are hover-only. The row should stay quiet unless the user is intentionally managing it.
 
+## Timeline
+
+Rootbox also has a Timeline view for reading attention distribution over time.
+
+Timeline uses cached `output_traces`. It does not run git commands from the SwiftUI view.
+
+Timeline ranges use different bucket sizes:
+
+```text
+48H -> hourly buckets
+7D  -> daily buckets
+30D -> daily buckets
+90D -> weekly buckets
+1Y  -> ten-day buckets, roughly upper/middle/lower month
+```
+
+The goal is not precise project accounting. The goal is to make output distribution visible:
+
+```text
+Which roots received output recently?
+Which roots only feel important but have no trace?
+Which roots were alive in a specific season?
+```
+
 ## Why This MVP
 
 The first question Rootbox should answer is:
@@ -163,6 +188,7 @@ Darktime should not copy GitHub's green-dot anxiety. It should show which roots 
 - Existing Rootbox matters remain visible as seeds.
 - Current view only shows alive/quiet roots and fresh seeds.
 - Fading and withered roots are hidden behind the lens filter.
+- Timeline view shows cached output distribution across 48H, 7D, 30D, 90D, and 1Y.
 - Repo roots can be edited without changing the local repository.
 - Repo roots can be removed from Rootbox without deleting local files.
 - No GitHub account or network access is required.
