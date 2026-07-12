@@ -258,7 +258,7 @@ private struct LocalRepoRootRow: View {
                             RootboxRowActionButton("Edit") {
                                 isEditing = true
                             }
-                            RootboxRowActionButton("Remove", tint: DTColor.red) {
+                            RootboxRowActionButton("Remove") {
                                 isConfirmingRemoval = true
                             }
                         }
@@ -452,13 +452,11 @@ private struct RootEditSheet: View {
 
 private struct RootboxRowActionButton: View {
     let title: String
-    let tint: Color
     let action: () -> Void
     @State private var isHovering = false
 
-    init(_ title: String, tint: Color = DTColor.muted, action: @escaping () -> Void) {
+    init(_ title: String, action: @escaping () -> Void) {
         self.title = title
-        self.tint = tint
         self.action = action
     }
 
@@ -466,7 +464,7 @@ private struct RootboxRowActionButton: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 11, weight: .regular, design: .default))
-                .foregroundStyle(isHovering ? tint : DTColor.dimmed)
+                .foregroundStyle(isHovering ? DTColor.text.opacity(0.78) : DTColor.muted)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
                 .background(
@@ -487,43 +485,48 @@ private struct SeedRootRow: View {
     @State private var isHovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .top, spacing: 13) {
-                Image(systemName: "leaf.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(seedTint)
-                    .frame(width: 28, height: 28)
-                    .background(seedTint.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
+        HStack(alignment: .top, spacing: 13) {
+            Image(systemName: "leaf.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(seedTint)
+                .frame(width: 28, height: 28)
+                .background(seedTint.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
 
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(matter.text)
-                            .font(.system(size: 14, weight: .regular, design: .default))
-                            .foregroundStyle(DTColor.text)
-                            .fixedSize(horizontal: false, vertical: true)
-                        RootStateTag(text: seedState, tint: seedTint)
-                        Spacer()
-                        Text(formatRelative(matter.updatedAt))
-                            .font(.system(size: 11, weight: .regular, design: .monospaced))
-                            .foregroundStyle(DTColor.dimmed)
+            VStack(alignment: .leading, spacing: 7) {
+                Text(matter.text)
+                    .font(.system(size: 14, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.text)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    Spacer()
+                    ZStack(alignment: .trailing) {
+                        SeedActivityMetaGroup(
+                            time: formatRelative(matter.updatedAt),
+                            state: seedState,
+                            tint: seedTint
+                        )
+                        .opacity(isHovering ? 0 : 1)
+
+                        HStack(spacing: 4) {
+                            RootboxRowActionButton("Link Repo") {
+                                model.linkSeedToLocalRepo(matter)
+                            }
+                            RootboxRowActionButton("Drop") {
+                                model.moveMatter(matter, to: "dropped")
+                            }
+                        }
+                        .opacity(isHovering ? 1 : 0)
+                        .allowsHitTesting(isHovering)
                     }
+                    .animation(.easeOut(duration: 0.12), value: isHovering)
                 }
+                .frame(height: 19)
+                .font(.system(size: 11, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.dimmed)
+                .lineLimit(1)
             }
-
-            HStack(spacing: 14) {
-                Spacer()
-                Button("Link Repo") {
-                    model.linkSeedToLocalRepo(matter)
-                }
-                Button("Drop") {
-                    model.moveMatter(matter, to: "dropped")
-                }
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 11, weight: .regular, design: .default))
-            .foregroundStyle(DTColor.muted)
-            .opacity(isHovering ? 1 : 0)
         }
         .padding(.vertical, 13)
         .contentShape(Rectangle())
@@ -540,6 +543,24 @@ private struct SeedRootRow: View {
         seedState == "fading" ? DTColor.dimmed : DTColor.amber
     }
 
+}
+
+private struct SeedActivityMetaGroup: View {
+    let time: String
+    let state: String
+    let tint: Color
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 6) {
+            Text(time)
+            Text("·")
+                .foregroundStyle(DTColor.dimmed.opacity(0.75))
+            RootActivityTag(text: state, tint: tint)
+        }
+        .font(.system(size: 11, weight: .regular, design: .monospaced))
+        .foregroundStyle(DTColor.dimmed)
+        .lineLimit(1)
+    }
 }
 
 private func rootboxSeedState(for matter: MatterSnapshot) -> String {
@@ -582,21 +603,6 @@ private func formatRootboxMonthDay(_ date: Date) -> String {
     let formatter = DateFormatter()
     formatter.dateFormat = "MMM d"
     return formatter.string(from: date)
-}
-
-private struct RootStateTag: View {
-    let text: String
-    let tint: Color
-
-    var body: some View {
-        Text(text.uppercased())
-            .font(.system(size: 9, weight: .bold, design: .default))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(tint.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-    }
 }
 
 private struct RootboxHairline: View {
