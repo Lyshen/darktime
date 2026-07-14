@@ -23,8 +23,8 @@ enum LocalGitRepositoryService {
         )
     }
 
-    static func inspect(root: RootSnapshot) -> LocalRepoSnapshot? {
-        guard let localPath = root.localPath else {
+    static func inspect(project: ProjectSnapshot) -> LocalRepoSnapshot? {
+        guard let localPath = project.localPath else {
             return nil
         }
 
@@ -35,7 +35,7 @@ enum LocalGitRepositoryService {
             let hasUncommittedChanges = hasUncommittedChanges(at: resolved.rootPath)
 
             return LocalRepoSnapshot(
-                root: root,
+                project: project,
                 repoName: resolved.title,
                 rootPath: resolved.rootPath,
                 branch: branch,
@@ -49,8 +49,8 @@ enum LocalGitRepositoryService {
             )
         } catch {
             return LocalRepoSnapshot(
-                root: root,
-                repoName: root.title,
+                project: project,
+                repoName: project.title,
                 rootPath: localPath,
                 branch: "unavailable",
                 lastCommitAt: nil,
@@ -158,7 +158,7 @@ enum LocalGitRepositoryService {
             let lastCommitAt,
             let date = parseGitDate(lastCommitAt)
         else {
-            return "seed"
+            return "empty"
         }
 
         let days = Date().timeIntervalSince(date) / 86_400
@@ -171,7 +171,7 @@ enum LocalGitRepositoryService {
         if days <= 30 {
             return "fading"
         }
-        return "withered"
+        return "inactive"
     }
 
     private static func parseGitDate(_ value: String) -> Date? {

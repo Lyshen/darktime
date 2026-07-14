@@ -12,7 +12,7 @@ final class DashboardModel: ObservableObject {
     @Published var calendars: [CalendarSnapshot] = []
     @Published var sessions: [MCPSessionSnapshot] = []
     @Published var matters: [MatterSnapshot] = []
-    @Published var roots: [RootSnapshot] = []
+    @Published var projects: [ProjectSnapshot] = []
     @Published var localRepoSnapshots: [LocalRepoSnapshot] = []
     @Published var outputTraces: [OutputTraceSnapshot] = []
     @Published var storageReady = false
@@ -33,7 +33,7 @@ final class DashboardModel: ObservableObject {
 
     private let calendarService = AppleCalendarService()
     private var lastLocalRepoTraceSyncAt: Date?
-    private var lastLocalRepoTraceSyncRootIDs = Set<String>()
+    private var lastLocalRepoTraceSyncProjectIDs = Set<String>()
     private var localRepoTraceSyncTask: Task<Void, Never>?
 
     init() {
@@ -76,12 +76,12 @@ final class DashboardModel: ObservableObject {
         matters.filter { $0.status == "inbox" }
     }
 
-    var rootboxMatters: [MatterSnapshot] {
-        matters.filter { $0.status == "rootbox" }
+    var issueMatters: [MatterSnapshot] {
+        matters.filter { $0.status == "issue" }
     }
 
-    var rootboxItemCount: Int {
-        localRepoSnapshots.count + rootboxMatters.count
+    var attentionItemCount: Int {
+        localRepoSnapshots.count + issueMatters.count
     }
 
     var droppedMatters: [MatterSnapshot] {
@@ -145,8 +145,8 @@ final class DashboardModel: ObservableObject {
         do {
             _ = try MatterRepository.moveMatter(matter, to: status)
             if navigate {
-                if status == "rootbox" {
-                    selectedSection = .rootbox
+                if status == "issue" {
+                    selectedSection = .attention
                 } else if status == "dropped" || status == "done" || status == "later" || status == "inbox" {
                     selectedSection = .inbox
                 }
@@ -170,22 +170,22 @@ final class DashboardModel: ObservableObject {
         }
     }
 
-    func addLocalRepoRoot() {
-        guard let path = chooseLocalRepoPath(message: "Choose a local git repository to show its activity in Rootbox.") else {
+    func addLocalRepoProject() {
+        guard let path = chooseLocalRepoPath(message: "Choose a local git repository to show its activity in Attention.") else {
             return
         }
 
-        addLocalRepoRoot(path: path)
+        addLocalRepoProject(path: path)
     }
 
-    func addLocalRepoRoot(path: String) {
+    func addLocalRepoProject(path: String) {
         do {
             let repository = try LocalGitRepositoryService.resolveRepository(at: path)
-            _ = try MatterRepository.createLocalRepoRoot(
+            _ = try MatterRepository.createLocalRepoProject(
                 title: repository.title,
                 localPath: repository.rootPath
             )
-            selectedSection = .rootbox
+            selectedSection = .attention
             refresh()
             scheduleLocalRepoTraceSync(force: true)
         } catch {
@@ -193,19 +193,19 @@ final class DashboardModel: ObservableObject {
         }
     }
 
-    func linkSeedToLocalRepo(_ matter: MatterSnapshot) {
-        guard let path = chooseLocalRepoPath(message: "Choose a local git repository for this seed.") else {
+    func linkIssueToLocalRepoProject(_ issue: MatterSnapshot) {
+        guard let path = chooseLocalRepoPath(message: "Choose a local git repository for this issue.") else {
             return
         }
 
         do {
             let repository = try LocalGitRepositoryService.resolveRepository(at: path)
-            _ = try MatterRepository.linkMatterToLocalRepoRoot(
-                matter: matter,
+            _ = try MatterRepository.linkIssueToLocalRepoProject(
+                issue: issue,
                 title: repository.title,
                 localPath: repository.rootPath
             )
-            selectedSection = .rootbox
+            selectedSection = .attention
             refresh()
             scheduleLocalRepoTraceSync(force: true)
         } catch {
@@ -213,15 +213,15 @@ final class DashboardModel: ObservableObject {
         }
     }
 
-    func refreshRepoRoots() {
+    func refreshRepoProjects() {
         scheduleLocalRepoTraceSync(force: true)
     }
 
     @discardableResult
-    func updateRoot(_ root: RootSnapshot, title: String, intention: String?) -> Bool {
+    func updateProject(_ project: ProjectSnapshot, title: String, intention: String?) -> Bool {
         do {
-            _ = try MatterRepository.updateRoot(
-                id: root.id,
+            _ = try MatterRepository.updateProject(
+                id: project.id,
                 title: title,
                 intention: intention
             )
@@ -235,9 +235,9 @@ final class DashboardModel: ObservableObject {
     }
 
     @discardableResult
-    func removeRoot(_ root: RootSnapshot) -> Bool {
+    func removeProject(_ project: ProjectSnapshot) -> Bool {
         do {
-            try MatterRepository.removeRoot(id: root.id)
+            try MatterRepository.removeProject(id: project.id)
             refresh()
             return true
         } catch {
@@ -309,7 +309,7 @@ final class DashboardModel: ObservableObject {
             let snapshot = try MatterRepository.refreshSnapshot()
             sessions = snapshot.sessions
             matters = snapshot.matters
-            roots = snapshot.roots
+            projects = snapshot.projects
             outputTraces = snapshot.outputTraces
             refreshLocalRepoSnapshots(from: snapshot.outputTraces)
             scheduleLocalRepoTraceSyncIfNeeded()
@@ -319,7 +319,7 @@ final class DashboardModel: ObservableObject {
         } catch {
             sessions = []
             matters = []
-            roots = []
+            projects = []
             localRepoSnapshots = []
             outputTraces = []
             storageReady = false
@@ -328,18 +328,18 @@ final class DashboardModel: ObservableObject {
     }
 
     private func refreshLocalRepoSnapshots(from traces: [OutputTraceSnapshot]) {
-        let repoRoots = roots.filter { $0.kind == "local_repo" }
-        let tracesByRoot = Dictionary(grouping: traces.filter { $0.source == "local_git" && $0.kind == "commit" }, by: \.rootId)
-        localRepoSnapshots = repoRoots.compactMap { root in
-            cachedLocalRepoSnapshot(root: root, traces: tracesByRoot[root.id] ?? [])
+        let repoProjects = projects.filter { $0.kind == "local_repo" }
+        let tracesByProject = Dictionary(grouping: traces.filter { $0.source == "local_git" && $0.kind == "commit" }, by: \.projectId)
+        localRepoSnapshots = repoProjects.compactMap { project in
+            cachedLocalRepoSnapshot(project: project, traces: tracesByProject[project.id] ?? [])
         }
             .sorted { left, right in
                 localRepoSortKey(left) < localRepoSortKey(right)
             }
     }
 
-    private func cachedLocalRepoSnapshot(root: RootSnapshot, traces: [OutputTraceSnapshot]) -> LocalRepoSnapshot? {
-        guard let localPath = root.localPath else {
+    private func cachedLocalRepoSnapshot(project: ProjectSnapshot, traces: [OutputTraceSnapshot]) -> LocalRepoSnapshot? {
+        guard let localPath = project.localPath else {
             return nil
         }
 
@@ -347,7 +347,7 @@ final class DashboardModel: ObservableObject {
         let latestTrace = sortedTraces.first
 
         return LocalRepoSnapshot(
-            root: root,
+            project: project,
             repoName: URL(fileURLWithPath: localPath, isDirectory: true).lastPathComponent,
             rootPath: localPath,
             branch: "cached",
@@ -376,7 +376,7 @@ final class DashboardModel: ObservableObject {
             let lastOutputAt,
             let date = parseISODate(lastOutputAt)
         else {
-            return "seed"
+            return "empty"
         }
 
         let days = Date().timeIntervalSince(date) / 86_400
@@ -389,14 +389,14 @@ final class DashboardModel: ObservableObject {
         if days <= 30 {
             return "fading"
         }
-        return "withered"
+        return "inactive"
     }
 
     private func scheduleLocalRepoTraceSyncIfNeeded() {
-        let currentIDs = Set(roots.filter { $0.kind == "local_repo" }.map(\.id))
-        let rootsChanged = lastLocalRepoTraceSyncRootIDs != currentIDs
+        let currentIDs = Set(projects.filter { $0.kind == "local_repo" }.map(\.id))
+        let projectsChanged = lastLocalRepoTraceSyncProjectIDs != currentIDs
 
-        if rootsChanged || lastLocalRepoTraceSyncAt == nil {
+        if projectsChanged || lastLocalRepoTraceSyncAt == nil {
             scheduleLocalRepoTraceSync(force: true)
             return
         }
@@ -412,8 +412,8 @@ final class DashboardModel: ObservableObject {
     }
 
     private func scheduleLocalRepoTraceSync(force: Bool) {
-        let repoRoots = roots.filter { $0.kind == "local_repo" }
-        guard !repoRoots.isEmpty else {
+        let repoProjects = projects.filter { $0.kind == "local_repo" }
+        guard !repoProjects.isEmpty else {
             localRepoTraceSyncTask?.cancel()
             localRepoTraceSyncTask = nil
             isSyncingTraces = false
@@ -430,12 +430,12 @@ final class DashboardModel: ObservableObject {
 
         isSyncingTraces = true
         traceSyncError = nil
-        let rootsToSync = repoRoots
-        let rootIDsToSync = Set(repoRoots.map(\.id))
-        localRepoTraceSyncTask = Task { [weak self, rootsToSync] in
+        let projectsToSync = repoProjects
+        let projectIDsToSync = Set(repoProjects.map(\.id))
+        localRepoTraceSyncTask = Task { [weak self, projectsToSync] in
             let result = await Task.detached(priority: .utility) {
                 Result {
-                    try MatterRepository.syncLocalGitTraces(roots: rootsToSync)
+                    try MatterRepository.syncLocalGitTraces(projects: projectsToSync)
                 }
             }.value
 
@@ -450,7 +450,7 @@ final class DashboardModel: ObservableObject {
                     self.traceSyncError = nil
                     self.traceSyncLastFinishedAt = ISO8601DateFormatter().string(from: Date())
                     self.traceSyncLastChangeCount = changedCount
-                    self.lastLocalRepoTraceSyncRootIDs = rootIDsToSync
+                    self.lastLocalRepoTraceSyncProjectIDs = projectIDsToSync
                     self.refreshStorage()
                 case .failure(let error):
                     self.traceSyncError = error.localizedDescription
@@ -461,7 +461,7 @@ final class DashboardModel: ObservableObject {
     }
 
     private func localRepoSortKey(_ repo: LocalRepoSnapshot) -> String {
-        "\(localRepoStateRank(repo.state))-\(repo.root.title.lowercased())"
+        "\(localRepoStateRank(repo.state))-\(repo.project.title.lowercased())"
     }
 
     private func localRepoStateRank(_ state: String) -> String {
@@ -469,8 +469,8 @@ final class DashboardModel: ObservableObject {
         case "alive": return "0"
         case "quiet": return "1"
         case "fading": return "2"
-        case "withered": return "3"
-        case "seed": return "4"
+        case "inactive": return "3"
+        case "empty": return "4"
         default: return "4"
         }
     }

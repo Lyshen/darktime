@@ -3,7 +3,7 @@ import Foundation
 struct MatterRepositorySnapshot {
     let sessions: [MCPSessionSnapshot]
     let matters: [MatterSnapshot]
-    let roots: [RootSnapshot]
+    let projects: [ProjectSnapshot]
     let outputTraces: [OutputTraceSnapshot]
 }
 
@@ -34,7 +34,7 @@ enum MatterRepository {
         return MatterRepositorySnapshot(
             sessions: try LocalDatabase.recentSessions(limit: 12),
             matters: try LocalDatabase.recentMatters(limit: 180),
-            roots: try LocalDatabase.recentRoots(limit: 80),
+            projects: try LocalDatabase.recentProjects(limit: 80),
             outputTraces: try LocalDatabase.recentOutputTraces(limit: 5_000)
         )
     }
@@ -47,27 +47,27 @@ enum MatterRepository {
         try LocalDatabase.updateMatterStatus(id: matter.id, status: status)
     }
 
-    static func createLocalRepoRoot(title: String, localPath: String, intention: String? = nil) throws -> RootSnapshot {
-        try LocalDatabase.createLocalRepoRoot(title: title, localPath: localPath, intention: intention)
+    static func createLocalRepoProject(title: String, localPath: String, intention: String? = nil) throws -> ProjectSnapshot {
+        try LocalDatabase.createLocalRepoProject(title: title, localPath: localPath, intention: intention)
     }
 
-    static func linkMatterToLocalRepoRoot(matter: MatterSnapshot, title: String, localPath: String) throws -> RootSnapshot {
-        try LocalDatabase.linkMatterToLocalRepoRoot(matter: matter, title: title, localPath: localPath)
+    static func linkIssueToLocalRepoProject(issue: MatterSnapshot, title: String, localPath: String) throws -> ProjectSnapshot {
+        try LocalDatabase.linkMatterToLocalRepoProject(matter: issue, title: title, localPath: localPath)
     }
 
-    static func updateRoot(id: String, title: String, intention: String?) throws -> RootSnapshot {
-        try LocalDatabase.updateRoot(id: id, title: title, intention: intention)
+    static func updateProject(id: String, title: String, intention: String?) throws -> ProjectSnapshot {
+        try LocalDatabase.updateProject(id: id, title: title, intention: intention)
     }
 
-    static func removeRoot(id: String) throws {
-        try LocalDatabase.removeRoot(id: id)
+    static func removeProject(id: String) throws {
+        try LocalDatabase.removeProject(id: id)
     }
 
     @discardableResult
-    static func syncLocalGitTraces(roots: [RootSnapshot]) throws -> Int {
-        var failedRoots: [String] = []
-        let traces = roots.flatMap { root -> [OutputTraceUpsert] in
-            guard let localPath = root.localPath else {
+    static func syncLocalGitTraces(projects: [ProjectSnapshot]) throws -> Int {
+        var failedProjects: [String] = []
+        let traces = projects.flatMap { project -> [OutputTraceUpsert] in
+            guard let localPath = project.localPath else {
                 return []
             }
 
@@ -76,7 +76,7 @@ enum MatterRepository {
                 return try LocalGitRepositoryService.commitTraces(at: repository.rootPath)
                     .map { commit in
                         OutputTraceUpsert(
-                            rootId: root.id,
+                            projectId: project.id,
                             source: "local_git",
                             kind: "commit",
                             externalId: commit.hash,
@@ -86,13 +86,13 @@ enum MatterRepository {
                         )
                     }
             } catch {
-                failedRoots.append(root.title)
+                failedProjects.append(project.title)
                 return []
             }
         }
 
-        if traces.isEmpty, !failedRoots.isEmpty {
-            throw StorageError.invalidInput("Unable to sync local git traces for \(failedRoots.joined(separator: ", ")).")
+        if traces.isEmpty, !failedProjects.isEmpty {
+            throw StorageError.invalidInput("Unable to sync local git traces for \(failedProjects.joined(separator: ", ")).")
         }
 
         return try LocalDatabase.upsertOutputTraces(traces)

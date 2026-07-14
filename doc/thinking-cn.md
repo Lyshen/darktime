@@ -1,5 +1,7 @@
 # Darktime 讨论备忘录
 
+> 历史讨论稿：这里保留早期 Rootbox / Seed 等隐喻讨论。当前正式产品语言以 [domain-language-v0.md](domain-language-v0.md) 为准。
+
 这不是产品需求文档，也不是对外介绍。
 
 它是我们当前关于 Darktime 的一些想法、价值观和判断。后续很可能会改，甚至推翻。先用中文记录，是为了保留问题的原始质感。

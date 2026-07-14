@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-enum RootTimelineRange: String, CaseIterable, Identifiable {
+enum AttentionTimelineRange: String, CaseIterable, Identifiable {
     case fortyEightHours = "48H"
     case sevenDays = "7D"
     case thirtyDays = "30D"
@@ -50,7 +50,7 @@ enum RootTimelineRange: String, CaseIterable, Identifiable {
         }
     }
 
-    fileprivate func buckets(now: Date = Date(), calendar: Calendar = .current) -> [RootTimelineBucket] {
+    fileprivate func buckets(now: Date = Date(), calendar: Calendar = .current) -> [AttentionTimelineBucket] {
         switch self {
         case .fortyEightHours:
             let currentHour = calendar.dateInterval(of: .hour, for: now)?.start ?? now
@@ -62,7 +62,7 @@ enum RootTimelineRange: String, CaseIterable, Identifiable {
                 else {
                     return nil
                 }
-                return RootTimelineBucket(start: start, end: end, unit: .hour)
+                return AttentionTimelineBucket(start: start, end: end, unit: .hour)
             }
         case .sevenDays:
             return dayBuckets(count: 7, now: now, calendar: calendar)
@@ -78,7 +78,7 @@ enum RootTimelineRange: String, CaseIterable, Identifiable {
                 else {
                     return nil
                 }
-                return RootTimelineBucket(start: start, end: end, unit: .week)
+                return AttentionTimelineBucket(start: start, end: end, unit: .week)
             }
         case .oneYear:
             return tenDayBuckets(now: now, calendar: calendar)
@@ -103,7 +103,7 @@ enum RootTimelineRange: String, CaseIterable, Identifiable {
         }
     }
 
-    private func dayBuckets(count: Int, now: Date, calendar: Calendar) -> [RootTimelineBucket] {
+    private func dayBuckets(count: Int, now: Date, calendar: Calendar) -> [AttentionTimelineBucket] {
         let today = calendar.startOfDay(for: now)
         let first = calendar.date(byAdding: .day, value: -(count - 1), to: today) ?? today
         return (0..<count).compactMap { offset in
@@ -113,22 +113,22 @@ enum RootTimelineRange: String, CaseIterable, Identifiable {
             else {
                 return nil
             }
-            return RootTimelineBucket(start: start, end: end, unit: .day)
+            return AttentionTimelineBucket(start: start, end: end, unit: .day)
         }
     }
 
-    private func tenDayBuckets(now: Date, calendar: Calendar) -> [RootTimelineBucket] {
+    private func tenDayBuckets(now: Date, calendar: Calendar) -> [AttentionTimelineBucket] {
         let components = calendar.dateComponents([.year, .month, .day], from: now)
         guard let year = components.year, let month = components.month, let day = components.day else {
             return []
         }
 
-        var period = RootTimelineTenDayPeriod(
+        var period = AttentionTimelineTenDayPeriod(
             year: year,
             month: month,
             segment: day <= 10 ? 0 : (day <= 20 ? 1 : 2)
         )
-        var periods: [RootTimelineTenDayPeriod] = []
+        var periods: [AttentionTimelineTenDayPeriod] = []
         for _ in 0..<36 {
             periods.append(period)
             period = period.previous()
@@ -150,17 +150,17 @@ enum RootTimelineRange: String, CaseIterable, Identifiable {
             guard let end else {
                 return nil
             }
-            return RootTimelineBucket(start: start, end: end, unit: .tenDay)
+            return AttentionTimelineBucket(start: start, end: end, unit: .tenDay)
         }
     }
 }
 
-struct RootTimelineRangePicker: View {
-    @Binding var selection: RootTimelineRange
+struct AttentionTimelineRangePicker: View {
+    @Binding var selection: AttentionTimelineRange
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(RootTimelineRange.allCases) { range in
+            ForEach(AttentionTimelineRange.allCases) { range in
                 Button {
                     selection = range
                 } label: {
@@ -185,10 +185,10 @@ struct RootTimelineRangePicker: View {
     }
 }
 
-struct RootTimelineWorkspace: View {
+struct AttentionTimelineWorkspace: View {
     let repos: [LocalRepoSnapshot]
     let traces: [OutputTraceSnapshot]
-    let range: RootTimelineRange
+    let range: AttentionTimelineRange
 
     var body: some View {
         let buckets = range.buckets()
@@ -203,12 +203,12 @@ struct RootTimelineWorkspace: View {
                         detail: "Add a local repo to see attention output over time."
                     )
                 } else {
-                    RootTimelineAxis(range: range, buckets: buckets)
+                    AttentionTimelineAxis(range: range, buckets: buckets)
                     VStack(spacing: 0) {
-                        ForEach(rows, id: \.repo.root.id) { row in
-                            RootTimelineRow(row: row, range: range, buckets: buckets)
-                            if row.repo.root.id != rows.last?.repo.root.id {
-                                RootTimelineHairline()
+                        ForEach(rows, id: \.repo.project.id) { row in
+                            AttentionTimelineRow(row: row, range: range, buckets: buckets)
+                            if row.repo.project.id != rows.last?.repo.project.id {
+                                AttentionTimelineHairline()
                             }
                         }
                     }
@@ -222,28 +222,28 @@ struct RootTimelineWorkspace: View {
         }
     }
 
-    private func timelineRows(for buckets: [RootTimelineBucket]) -> [RootTimelineRowData] {
+    private func timelineRows(for buckets: [AttentionTimelineBucket]) -> [AttentionTimelineRowData] {
         let commitTraces = traces.filter { $0.source == "local_git" && $0.kind == "commit" }
-        let tracesByRoot = Dictionary(grouping: commitTraces, by: \.rootId)
+        let tracesByProject = Dictionary(grouping: commitTraces, by: \.projectId)
 
         return repos
             .map { repo in
-                let dates = (tracesByRoot[repo.root.id] ?? []).compactMap { parseISODate($0.happenedAt) }
+                let dates = (tracesByProject[repo.project.id] ?? []).compactMap { parseISODate($0.happenedAt) }
                 let counts = buckets.map { bucket in
                     dates.filter { $0 >= bucket.start && $0 < bucket.end }.count
                 }
-                return RootTimelineRowData(repo: repo, counts: counts, total: counts.reduce(0, +))
+                return AttentionTimelineRowData(repo: repo, counts: counts, total: counts.reduce(0, +))
             }
             .sorted { left, right in
                 if left.total != right.total {
                     return left.total > right.total
                 }
-                return left.repo.root.title.localizedCaseInsensitiveCompare(right.repo.root.title) == .orderedAscending
+                return left.repo.project.title.localizedCaseInsensitiveCompare(right.repo.project.title) == .orderedAscending
             }
     }
 }
 
-private struct RootTimelineTenDayPeriod {
+private struct AttentionTimelineTenDayPeriod {
     let year: Int
     let month: Int
     let segment: Int
@@ -264,43 +264,43 @@ private struct RootTimelineTenDayPeriod {
         }
     }
 
-    func previous() -> RootTimelineTenDayPeriod {
+    func previous() -> AttentionTimelineTenDayPeriod {
         if segment > 0 {
-            return RootTimelineTenDayPeriod(year: year, month: month, segment: segment - 1)
+            return AttentionTimelineTenDayPeriod(year: year, month: month, segment: segment - 1)
         }
         if month > 1 {
-            return RootTimelineTenDayPeriod(year: year, month: month - 1, segment: 2)
+            return AttentionTimelineTenDayPeriod(year: year, month: month - 1, segment: 2)
         }
-        return RootTimelineTenDayPeriod(year: year - 1, month: 12, segment: 2)
+        return AttentionTimelineTenDayPeriod(year: year - 1, month: 12, segment: 2)
     }
 }
 
-private enum RootTimelineBucketUnit {
+private enum AttentionTimelineBucketUnit {
     case hour
     case day
     case week
     case tenDay
 }
 
-private struct RootTimelineBucket: Identifiable {
+private struct AttentionTimelineBucket: Identifiable {
     let start: Date
     let end: Date
-    let unit: RootTimelineBucketUnit
+    let unit: AttentionTimelineBucketUnit
 
     var id: TimeInterval {
         start.timeIntervalSince1970
     }
 }
 
-private struct RootTimelineRowData {
+private struct AttentionTimelineRowData {
     let repo: LocalRepoSnapshot
     let counts: [Int]
     let total: Int
 }
 
-private struct RootTimelineAxis: View {
-    let range: RootTimelineRange
-    let buckets: [RootTimelineBucket]
+private struct AttentionTimelineAxis: View {
+    let range: AttentionTimelineRange
+    let buckets: [AttentionTimelineBucket]
 
     var body: some View {
         HStack(spacing: 14) {
@@ -332,15 +332,15 @@ private struct RootTimelineAxis: View {
     }
 }
 
-private struct RootTimelineRow: View {
-    let row: RootTimelineRowData
-    let range: RootTimelineRange
-    let buckets: [RootTimelineBucket]
+private struct AttentionTimelineRow: View {
+    let row: AttentionTimelineRowData
+    let range: AttentionTimelineRange
+    let buckets: [AttentionTimelineBucket]
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(row.repo.root.title)
+                Text(row.repo.project.title)
                     .font(.system(size: 14, weight: .medium, design: .default))
                     .foregroundStyle(DTColor.text)
                     .lineLimit(1)
@@ -359,7 +359,7 @@ private struct RootTimelineRow: View {
             }
             .frame(width: 168, alignment: .leading)
 
-            RootTimelineStrip(range: range, buckets: buckets, counts: row.counts)
+            AttentionTimelineStrip(range: range, buckets: buckets, counts: row.counts)
                 .frame(width: range.stripWidth)
 
             VStack(alignment: .trailing, spacing: 3) {
@@ -377,7 +377,7 @@ private struct RootTimelineRow: View {
     }
 
     private var intentionText: String? {
-        guard let intention = row.repo.root.intention?.trimmingCharacters(in: .whitespacesAndNewlines), !intention.isEmpty else {
+        guard let intention = row.repo.project.intention?.trimmingCharacters(in: .whitespacesAndNewlines), !intention.isEmpty else {
             return nil
         }
         return intention
@@ -394,9 +394,9 @@ private struct RootTimelineRow: View {
     }
 }
 
-private struct RootTimelineStrip: View {
-    let range: RootTimelineRange
-    let buckets: [RootTimelineBucket]
+private struct AttentionTimelineStrip: View {
+    let range: AttentionTimelineRange
+    let buckets: [AttentionTimelineBucket]
     let counts: [Int]
 
     var body: some View {
@@ -429,7 +429,7 @@ private struct RootTimelineStrip: View {
     }
 }
 
-private struct RootTimelineHairline: View {
+private struct AttentionTimelineHairline: View {
     var body: some View {
         Rectangle()
             .fill(Color.black.opacity(0.055))
@@ -453,7 +453,7 @@ private func formatTimelineRelative(_ date: Date) -> String {
     return "\(days)d ago"
 }
 
-private func formatTimelineAxisDate(_ date: Date, range: RootTimelineRange) -> String {
+private func formatTimelineAxisDate(_ date: Date, range: AttentionTimelineRange) -> String {
     let formatter = DateFormatter()
     switch range {
     case .fortyEightHours:
@@ -466,12 +466,12 @@ private func formatTimelineAxisDate(_ date: Date, range: RootTimelineRange) -> S
     return formatter.string(from: date)
 }
 
-private func formatTimelineBucketHelp(_ bucket: RootTimelineBucket, count: Int) -> String {
+private func formatTimelineBucketHelp(_ bucket: AttentionTimelineBucket, count: Int) -> String {
     let noun = count == 1 ? "output" : "outputs"
     return "\(formatTimelineBucketRange(bucket)) · \(count) \(noun)"
 }
 
-private func formatTimelineBucketRange(_ bucket: RootTimelineBucket) -> String {
+private func formatTimelineBucketRange(_ bucket: AttentionTimelineBucket) -> String {
     let end = Date(timeInterval: -1, since: bucket.end)
     switch bucket.unit {
     case .hour:

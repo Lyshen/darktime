@@ -22,7 +22,7 @@ Brand Name
   Darktime
 
 Domain Concepts
-  Capture, Inbox, Matter, Rootbox
+  Capture, Inbox, Matter, Attention
 
 Technical Roles
   Store, Repository, Service, Connector, ViewModel
@@ -77,17 +77,17 @@ AttentionItem
 
 其中 `InboxItem` 最朴素，但不够表达长期生命力；`OpenLoop` 更贴近心理负担；`Matter` 更有品牌气质，但抽象度高。
 
-### Rootbox
+### Attention
 
-`Rootbox` 比 `Matter` 更应该谨慎。
+`Attention` 比 `Matter` 更应该谨慎。
 
 它现在更像产品愿景，不一定是 v0 里已经成立的稳定领域对象。
 
 当前建议：
 
-- UI 可以出现 Rootbox。
-- 数据状态可以保留 `rootbox`，因为已有流转需要。
-- 暂时不要建立复杂的 `Root`、`RootboxService`、`RootRepository`。
+- UI 可以出现 Attention。
+- 数据状态可以保留 `attention`，因为已有流转需要。
+- 暂时不要建立复杂的 `Root`、`AttentionService`、`RootRepository`。
 
 ## Calendar 的位置
 
@@ -142,7 +142,7 @@ Sources/Darktime/
     Capture/
     QuickCapture/
     Inbox/
-    Rootbox/
+    Attention/
     Matters/
     CalendarIntegration/
   Core/
@@ -224,4 +224,4 @@ Integrations/Calendar/EventKit/
 1. 把命名污染控制住。
 2. 把 Calendar 放回 integration 位置。
 3. 把 DashboardModel 继续瘦身成纯 presentation model。
-4. 等 Capture / Inbox / Clear / Rootbox 的产品概念更稳定后，再决定核心 domain term。
+4. 等 Capture / Inbox / Clear / Attention 的产品概念更稳定后，再决定核心 domain term。

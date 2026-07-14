@@ -14,7 +14,7 @@ struct WorkspaceRail: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 railButton(for: .inbox)
-                railButton(for: .rootbox)
+                railButton(for: .attention)
             }
             .padding(.top, 26)
 
@@ -41,7 +41,7 @@ struct WorkspaceRail: View {
         switch section {
         case .capture: return nil
         case .inbox: return model.inboxMatters.count
-        case .rootbox: return model.rootboxItemCount
+        case .attention: return model.attentionItemCount
         case .dropped: return nil
         case .shortcutCapture: return nil
         case .calendar: return nil

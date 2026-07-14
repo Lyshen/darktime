@@ -59,8 +59,8 @@ struct DarktimeDashboard: View {
             CaptureWorkspace(model: model)
         case .inbox:
             InboxWorkspace(model: model)
-        case .rootbox:
-            RootboxWorkspace(model: model)
+        case .attention:
+            AttentionWorkspace(model: model)
         case .dropped:
             DroppedWorkspace(model: model)
         case .shortcutCapture:

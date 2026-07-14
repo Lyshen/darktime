@@ -8,7 +8,7 @@ import SwiftUI
 enum WorkspaceSection: String, CaseIterable, Identifiable {
     case capture
     case inbox
-    case rootbox
+    case attention
     case dropped
     case shortcutCapture
     case calendar
@@ -19,7 +19,7 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
         switch self {
         case .capture: return "Capture"
         case .inbox: return "Inbox"
-        case .rootbox: return "Rootbox"
+        case .attention: return "Attention"
         case .dropped: return "Dropped"
         case .shortcutCapture: return "Shortcut Capture"
         case .calendar: return "Calendar"
@@ -30,7 +30,7 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
         switch self {
         case .capture: return "square.and.pencil"
         case .inbox: return "tray.fill"
-        case .rootbox: return "tree.fill"
+        case .attention: return "scope"
         case .dropped: return "xmark.circle"
         case .shortcutCapture: return "iphone"
         case .calendar: return "calendar"

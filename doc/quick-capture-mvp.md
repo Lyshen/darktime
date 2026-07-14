@@ -45,7 +45,7 @@ Clear explicitly -> clear draft
 - Selected text capture through Accessibility permissions.
 - Clipboard capture.
 - AI cleanup.
-- Tags, projects, dates, priorities, or Root selection.
+- Tags, projects, dates, priorities, or Project selection.
 - Full settings UI for custom shortcuts.
 
 ## Success Criteria
