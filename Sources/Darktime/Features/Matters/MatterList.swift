@@ -64,8 +64,8 @@ struct MatterRow: View {
                 }
                 Spacer()
             }
-            if matter.status == "rootbox" {
-                RootboxActionBar(model: model, matter: matter)
+            if matter.status == "issue" {
+                IssueActionBar(model: model, matter: matter)
             } else {
                 InboxClearActionBar(model: model, matter: matter)
             }
@@ -81,7 +81,7 @@ struct MatterRow: View {
 
     private func icon(for status: String) -> String {
         switch status {
-        case "rootbox": return "tree.fill"
+        case "issue": return "circle.dotted"
         case "today": return "sun.max.fill"
         case "later": return "clock.fill"
         case "done": return "checkmark.circle.fill"
@@ -92,7 +92,7 @@ struct MatterRow: View {
 
     private func tint(for status: String) -> Color {
         switch status {
-        case "rootbox": return DTColor.green
+        case "issue": return DTColor.green
         case "today": return DTColor.amber
         case "later": return DTColor.cyan
         case "done": return DTColor.green
@@ -101,5 +101,4 @@ struct MatterRow: View {
         }
     }
 }
-
 

@@ -38,7 +38,7 @@ struct MatterSnapshot: Sendable {
     let rawPayloadJson: String?
 }
 
-struct RootSnapshot: Sendable {
+struct ProjectSnapshot: Sendable {
     let id: String
     let title: String
     let intention: String?
@@ -49,7 +49,7 @@ struct RootSnapshot: Sendable {
 }
 
 struct LocalRepoSnapshot: Sendable {
-    let root: RootSnapshot
+    let project: ProjectSnapshot
     let repoName: String
     let rootPath: String
     let branch: String
@@ -75,7 +75,7 @@ struct MatterLogSnapshot: Sendable {
 
 struct OutputTraceSnapshot: Sendable {
     let id: String
-    let rootId: String
+    let projectId: String
     let source: String
     let kind: String
     let externalId: String?
@@ -86,7 +86,7 @@ struct OutputTraceSnapshot: Sendable {
 }
 
 struct OutputTraceUpsert: Sendable {
-    let rootId: String
+    let projectId: String
     let source: String
     let kind: String
     let externalId: String

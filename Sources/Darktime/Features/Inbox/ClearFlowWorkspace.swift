@@ -23,7 +23,7 @@ private struct ClearSessionSummary {
         [
             ("Dropped", "recoverable for \(MatterRepository.droppedRetentionDays) days", droppedCount, DTColor.dimmed),
             ("Done", "handled", doneCount, DTColor.green),
-            ("Kept", "Rootbox", keptCount, DTColor.green)
+            ("Issues", "kept open", keptCount, DTColor.green)
         ].filter { $0.count > 0 }
     }
 
@@ -37,7 +37,7 @@ private struct ClearSessionSummary {
             droppedCount += 1
         case "done":
             doneCount += 1
-        case "rootbox":
+        case "issue":
             keptCount += 1
         default:
             break
@@ -85,7 +85,7 @@ struct ClearFlowWorkspace: View {
                         matter: matter,
                         onDrop: { resolve(matter, as: "dropped") },
                         onDone: { resolve(matter, as: "done") },
-                        onKeep: { resolve(matter, as: "rootbox") }
+                        onKeep: { resolve(matter, as: "issue") }
                     )
                     .frame(maxWidth: 680)
                     .padding(.horizontal, 36)
@@ -212,8 +212,8 @@ private struct ClearMatterFocus: View {
                     action: onDone
                 )
                 ClearActionButton(
-                    "Keep",
-                    hint: "Kept in Rootbox.",
+                    "Issue",
+                    hint: "Keep as an open issue.",
                     tint: DTColor.green,
                     action: onKeep
                 )

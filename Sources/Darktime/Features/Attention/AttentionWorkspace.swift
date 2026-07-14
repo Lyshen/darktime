@@ -5,32 +5,32 @@ import EventKit
 import Foundation
 import SwiftUI
 
-struct RootboxWorkspace: View {
+struct AttentionWorkspace: View {
     @ObservedObject var model: DashboardModel
-    @State private var mode: RootboxMode = .roots
-    @State private var lens: RootboxLens = .current
-    @State private var timelineRange: RootTimelineRange = .thirtyDays
+    @State private var mode: AttentionMode = .items
+    @State private var lens: AttentionLens = .current
+    @State private var timelineRange: AttentionTimelineRange = .thirtyDays
 
     private var visibleRepos: [LocalRepoSnapshot] {
         model.localRepoSnapshots.filter { lens.includes(repo: $0) }
     }
 
-    private var visibleSeeds: [MatterSnapshot] {
+    private var visibleIssues: [MatterSnapshot] {
         switch lens {
         case .current:
-            return model.rootboxMatters.filter { rootboxSeedState(for: $0) == "seed" }
+            return model.issueMatters.filter { attentionIssueState(for: $0) == "open" }
         case .fading:
-            return model.rootboxMatters.filter { rootboxSeedState(for: $0) == "fading" }
-        case .withered:
+            return model.issueMatters.filter { attentionIssueState(for: $0) == "stale" }
+        case .inactive:
             return []
         case .all:
-            return model.rootboxMatters
+            return model.issueMatters
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            RootboxTopBar(
+            AttentionTopBar(
                 model: model,
                 mode: $mode,
                 lens: $lens,
@@ -39,17 +39,17 @@ struct RootboxWorkspace: View {
             Divider().overlay(DTColor.line.opacity(0.7))
 
             switch mode {
-            case .roots:
-                RootboxRootsView(
+            case .items:
+                AttentionItemsView(
                     model: model,
                     lens: lens,
                     visibleRepos: visibleRepos,
-                    visibleSeeds: visibleSeeds,
+                    visibleIssues: visibleIssues,
                     emptyTitle: emptyTitle,
                     emptyDetail: emptyDetail
                 )
             case .timeline:
-                RootTimelineWorkspace(
+                AttentionTimelineWorkspace(
                     repos: model.localRepoSnapshots,
                     traces: model.outputTraces,
                     range: timelineRange
@@ -61,60 +61,60 @@ struct RootboxWorkspace: View {
 
     private var emptyTitle: String {
         switch lens {
-        case .current: return "No current roots"
-        case .fading: return "No fading roots"
-        case .withered: return "No withered roots"
-        case .all: return "No roots yet"
+        case .current: return "No active attention"
+        case .fading: return "No fading items"
+        case .inactive: return "No inactive projects"
+        case .all: return "No issues or projects yet"
         }
     }
 
     private var emptyDetail: String {
         switch lens {
-        case .current: return "Add a local repo or keep a matter from Inbox."
-        case .fading: return "Roots will appear here when they start to drift."
-        case .withered: return "Old roots stay out of sight until you choose to review them."
-        case .all: return "Add a local repo or keep a matter from Inbox."
+        case .current: return "Clear Inbox into issues, or add a local repo as a project."
+        case .fading: return "Issues and projects show up here when they start to drift."
+        case .inactive: return "Inactive projects stay out of sight until you choose to review them."
+        case .all: return "Clear Inbox into issues, or add a local repo as a project."
         }
     }
 }
 
-private struct RootboxRootsView: View {
+private struct AttentionItemsView: View {
     @ObservedObject var model: DashboardModel
-    let lens: RootboxLens
+    let lens: AttentionLens
     let visibleRepos: [LocalRepoSnapshot]
-    let visibleSeeds: [MatterSnapshot]
+    let visibleIssues: [MatterSnapshot]
     let emptyTitle: String
     let emptyDetail: String
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                if visibleRepos.isEmpty && visibleSeeds.isEmpty {
+                if visibleRepos.isEmpty && visibleIssues.isEmpty {
                     EmptyStateLine(
-                        systemImage: "tree",
+                        systemImage: "scope",
                         title: emptyTitle,
                         detail: emptyDetail
                     )
                 } else {
                     if !visibleRepos.isEmpty {
-                        RootboxSectionTitle("Projects")
+                        AttentionSectionTitle("Projects")
                         VStack(spacing: 0) {
-                            ForEach(visibleRepos, id: \.root.id) { repo in
-                                LocalRepoRootRow(model: model, repo: repo, lens: lens)
-                                if repo.root.id != visibleRepos.last?.root.id {
-                                    RootboxHairline()
+                            ForEach(visibleRepos, id: \.project.id) { repo in
+                                LocalRepoProjectRow(model: model, repo: repo, lens: lens)
+                                if repo.project.id != visibleRepos.last?.project.id {
+                                    AttentionHairline()
                                 }
                             }
                         }
                     }
 
-                    if !visibleSeeds.isEmpty {
-                        RootboxSectionTitle("Seeds")
+                    if !visibleIssues.isEmpty {
+                        AttentionSectionTitle("Issues")
                         VStack(spacing: 0) {
-                            ForEach(visibleSeeds, id: \.id) { matter in
-                                SeedRootRow(model: model, matter: matter)
-                                if matter.id != visibleSeeds.last?.id {
-                                    RootboxHairline()
+                            ForEach(visibleIssues, id: \.id) { matter in
+                                IssueRow(model: model, matter: matter)
+                                if matter.id != visibleIssues.last?.id {
+                                    AttentionHairline()
                                 }
                             }
                         }
@@ -130,31 +130,31 @@ private struct RootboxRootsView: View {
     }
 }
 
-private struct RootboxTopBar: View {
+private struct AttentionTopBar: View {
     @ObservedObject var model: DashboardModel
-    @Binding var mode: RootboxMode
-    @Binding var lens: RootboxLens
-    @Binding var timelineRange: RootTimelineRange
+    @Binding var mode: AttentionMode
+    @Binding var lens: AttentionLens
+    @Binding var timelineRange: AttentionTimelineRange
 
     var body: some View {
         HStack(spacing: 9) {
-            Image(systemName: "tree.fill")
+            Image(systemName: "scope")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(DTColor.muted)
                 .frame(width: 18)
-            Text("Rootbox")
+            Text("Attention")
                 .font(.system(size: 13, weight: .semibold, design: .default))
                 .foregroundStyle(DTColor.text)
             Spacer()
-            RootTraceSyncStatus(model: model)
-            RootboxModeSwitch(selection: $mode)
-            if mode == .roots {
-                RootboxLensMenu(selection: $lens)
+            ProjectTraceSyncStatus(model: model)
+            AttentionModeSwitch(selection: $mode)
+            if mode == .items {
+                AttentionLensMenu(selection: $lens)
             } else {
-                RootTimelineRangePicker(selection: $timelineRange)
+                AttentionTimelineRangePicker(selection: $timelineRange)
             }
             QuietHeaderButton("Add Repo") {
-                model.addLocalRepoRoot()
+                model.addLocalRepoProject()
             }
         }
         .padding(.horizontal, 20)
@@ -163,7 +163,7 @@ private struct RootboxTopBar: View {
     }
 }
 
-private struct RootTraceSyncStatus: View {
+private struct ProjectTraceSyncStatus: View {
     @ObservedObject var model: DashboardModel
 
     var body: some View {
@@ -243,17 +243,17 @@ private struct RootTraceSyncStatus: View {
     }
 }
 
-private enum RootboxMode: String, CaseIterable, Identifiable {
-    case roots = "Roots"
+private enum AttentionMode: String, CaseIterable, Identifiable {
+    case items = "Items"
     case timeline = "Timeline"
 
     var id: String { rawValue }
 }
 
-private enum RootboxLens: String, CaseIterable, Identifiable {
+private enum AttentionLens: String, CaseIterable, Identifiable {
     case current = "Current"
     case fading = "Fading"
-    case withered = "Withered"
+    case inactive = "Inactive"
     case all = "All"
 
     var id: String { rawValue }
@@ -261,23 +261,23 @@ private enum RootboxLens: String, CaseIterable, Identifiable {
     func includes(repo: LocalRepoSnapshot) -> Bool {
         switch self {
         case .current:
-            return repo.state == "alive" || repo.state == "quiet" || repo.state == "seed"
+            return repo.state == "alive" || repo.state == "quiet" || repo.state == "empty"
         case .fading:
             return repo.state == "fading"
-        case .withered:
-            return repo.state == "withered"
+        case .inactive:
+            return repo.state == "inactive"
         case .all:
             return true
         }
     }
 }
 
-private struct RootboxModeSwitch: View {
-    @Binding var selection: RootboxMode
+private struct AttentionModeSwitch: View {
+    @Binding var selection: AttentionMode
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(RootboxMode.allCases) { mode in
+            ForEach(AttentionMode.allCases) { mode in
                 Button {
                     selection = mode
                 } label: {
@@ -302,12 +302,12 @@ private struct RootboxModeSwitch: View {
     }
 }
 
-private struct RootboxLensMenu: View {
-    @Binding var selection: RootboxLens
+private struct AttentionLensMenu: View {
+    @Binding var selection: AttentionLens
 
     var body: some View {
         Menu {
-            ForEach(RootboxLens.allCases) { lens in
+            ForEach(AttentionLens.allCases) { lens in
                 Button {
                     selection = lens
                 } label: {
@@ -339,7 +339,7 @@ private struct RootboxLensMenu: View {
     }
 }
 
-private struct RootboxSectionTitle: View {
+private struct AttentionSectionTitle: View {
     let title: String
 
     init(_ title: String) {
@@ -354,10 +354,10 @@ private struct RootboxSectionTitle: View {
     }
 }
 
-private struct LocalRepoRootRow: View {
+private struct LocalRepoProjectRow: View {
     @ObservedObject var model: DashboardModel
     let repo: LocalRepoSnapshot
-    let lens: RootboxLens
+    let lens: AttentionLens
     @State private var isRowHovering = false
     @State private var isTitleHovering = false
     @State private var isEditing = false
@@ -377,7 +377,7 @@ private struct LocalRepoRootRow: View {
                     Button {
                         model.openLocalRepo(repo)
                     } label: {
-                        Text(repo.root.title)
+                        Text(repo.project.title)
                             .font(.system(size: 15, weight: .medium, design: .default))
                             .foregroundStyle(DTColor.text)
                             .underline(isTitleHovering, color: DTColor.text.opacity(0.45))
@@ -407,7 +407,7 @@ private struct LocalRepoRootRow: View {
                 HStack {
                     Spacer()
                     ZStack(alignment: .trailing) {
-                        RootActivityMetaGroup(
+                        ProjectActivityMetaGroup(
                             time: timeSummary,
                             count: commitWindowSummary,
                             state: repo.state,
@@ -416,10 +416,10 @@ private struct LocalRepoRootRow: View {
                         .opacity(isRowHovering ? 0 : 1)
 
                         HStack(spacing: 2) {
-                            RootboxRowActionButton("Edit") {
+                            AttentionRowActionButton("Edit") {
                                 isEditing = true
                             }
-                            RootboxRowActionButton("Remove") {
+                            AttentionRowActionButton("Remove") {
                                 isConfirmingRemoval = true
                             }
                         }
@@ -440,11 +440,11 @@ private struct LocalRepoRootRow: View {
             isRowHovering = hovering
         }
         .sheet(isPresented: $isEditing) {
-            RootEditSheet(model: model, root: repo.root)
+            ProjectEditSheet(model: model, project: repo.project)
         }
-        .alert("Remove from Rootbox?", isPresented: $isConfirmingRemoval) {
+        .alert("Remove project?", isPresented: $isConfirmingRemoval) {
             Button("Remove", role: .destructive) {
-                model.removeRoot(repo.root)
+                model.removeProject(repo.project)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -453,7 +453,7 @@ private struct LocalRepoRootRow: View {
     }
 
     private var intentionText: String? {
-        guard let intention = repo.root.intention?.trimmingCharacters(in: .whitespacesAndNewlines), !intention.isEmpty else {
+        guard let intention = repo.project.intention?.trimmingCharacters(in: .whitespacesAndNewlines), !intention.isEmpty else {
             return nil
         }
         return intention
@@ -464,15 +464,15 @@ private struct LocalRepoRootRow: View {
         case "alive": return DTColor.green
         case "quiet": return DTColor.cyan
         case "fading": return DTColor.amber
-        case "withered": return DTColor.dimmed
-        case "seed": return DTColor.amber
+        case "inactive": return DTColor.dimmed
+        case "empty": return DTColor.amber
         default: return DTColor.red
         }
     }
 
     private var timeSummary: String {
         if let lastCommitAt = repo.lastCommitAt {
-            return formatRootboxTime(lastCommitAt, lens: lens)
+            return formatAttentionTime(lastCommitAt, lens: lens)
         }
         return "no commits"
     }
@@ -483,7 +483,7 @@ private struct LocalRepoRootRow: View {
             return "\(repo.commitsLast2Days) in 2d"
         case "quiet":
             return "\(repo.commitsLast7Days) in 7d"
-        case "fading", "withered":
+        case "fading", "inactive":
             return "\(repo.commitsLast30Days) in 30d"
         default:
             return "0 in 30d"
@@ -491,7 +491,7 @@ private struct LocalRepoRootRow: View {
     }
 }
 
-private struct RootActivityMetaGroup: View {
+private struct ProjectActivityMetaGroup: View {
     let time: String
     let count: String
     let state: String
@@ -503,7 +503,7 @@ private struct RootActivityMetaGroup: View {
             Text("·")
                 .foregroundStyle(DTColor.dimmed.opacity(0.75))
             Text(count)
-            RootActivityTag(text: state, tint: tint)
+            ProjectActivityTag(text: state, tint: tint)
         }
         .font(.system(size: 11, weight: .regular, design: .monospaced))
         .foregroundStyle(DTColor.dimmed)
@@ -511,7 +511,7 @@ private struct RootActivityMetaGroup: View {
     }
 }
 
-private struct RootActivityTag: View {
+private struct ProjectActivityTag: View {
     let text: String
     let tint: Color
 
@@ -526,29 +526,29 @@ private struct RootActivityTag: View {
     }
 }
 
-private struct RootEditSheet: View {
+private struct ProjectEditSheet: View {
     @ObservedObject var model: DashboardModel
-    let root: RootSnapshot
+    let project: ProjectSnapshot
 
     @Environment(\.dismiss) private var dismiss
     @State private var title: String
     @State private var intention: String
     @State private var errorMessage: String?
 
-    init(model: DashboardModel, root: RootSnapshot) {
+    init(model: DashboardModel, project: ProjectSnapshot) {
         self.model = model
-        self.root = root
-        _title = State(initialValue: root.title)
-        _intention = State(initialValue: root.intention ?? "")
+        self.project = project
+        _title = State(initialValue: project.title)
+        _intention = State(initialValue: project.intention ?? "")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Edit Root")
+                Text("Edit Project")
                     .font(.system(size: 15, weight: .semibold, design: .default))
                     .foregroundStyle(DTColor.text)
-                Text(root.localPath ?? "")
+                Text(project.localPath ?? "")
                     .font(.system(size: 11, weight: .regular, design: .default))
                     .foregroundStyle(DTColor.dimmed)
                     .lineLimit(1)
@@ -598,8 +598,8 @@ private struct RootEditSheet: View {
     }
 
     private func save() {
-        let ok = model.updateRoot(
-            root,
+        let ok = model.updateProject(
+            project,
             title: title,
             intention: intention
         )
@@ -611,7 +611,7 @@ private struct RootEditSheet: View {
     }
 }
 
-private struct RootboxRowActionButton: View {
+private struct AttentionRowActionButton: View {
     let title: String
     let action: () -> Void
     @State private var isHovering = false
@@ -640,7 +640,7 @@ private struct RootboxRowActionButton: View {
     }
 }
 
-private struct SeedRootRow: View {
+private struct IssueRow: View {
     @ObservedObject var model: DashboardModel
     let matter: MatterSnapshot
     @State private var isHovering = false
@@ -649,9 +649,9 @@ private struct SeedRootRow: View {
         HStack(alignment: .top, spacing: 13) {
             Image(systemName: "leaf.fill")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(seedTint)
+                .foregroundStyle(issueTint)
                 .frame(width: 28, height: 28)
-                .background(seedTint.opacity(0.1))
+                .background(issueTint.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 7))
 
             VStack(alignment: .leading, spacing: 7) {
@@ -663,18 +663,18 @@ private struct SeedRootRow: View {
                 HStack {
                     Spacer()
                     ZStack(alignment: .trailing) {
-                        SeedActivityMetaGroup(
+                        IssueActivityMetaGroup(
                             time: formatRelative(matter.updatedAt),
-                            state: seedState,
-                            tint: seedTint
+                            state: issueState,
+                            tint: issueTint
                         )
                         .opacity(isHovering ? 0 : 1)
 
                         HStack(spacing: 2) {
-                            RootboxRowActionButton("Link Repo") {
-                                model.linkSeedToLocalRepo(matter)
+                            AttentionRowActionButton("Make Project") {
+                                model.linkIssueToLocalRepoProject(matter)
                             }
-                            RootboxRowActionButton("Drop") {
+                            AttentionRowActionButton("Drop") {
                                 model.moveMatter(matter, to: "dropped")
                             }
                         }
@@ -696,17 +696,17 @@ private struct SeedRootRow: View {
         }
     }
 
-    private var seedState: String {
-        rootboxSeedState(for: matter)
+    private var issueState: String {
+        attentionIssueState(for: matter)
     }
 
-    private var seedTint: Color {
-        seedState == "fading" ? DTColor.dimmed : DTColor.amber
+    private var issueTint: Color {
+        issueState == "stale" ? DTColor.dimmed : DTColor.amber
     }
 
 }
 
-private struct SeedActivityMetaGroup: View {
+private struct IssueActivityMetaGroup: View {
     let time: String
     let state: String
     let tint: Color
@@ -716,7 +716,7 @@ private struct SeedActivityMetaGroup: View {
             Text(time)
             Text("·")
                 .foregroundStyle(DTColor.dimmed.opacity(0.75))
-            RootActivityTag(text: state, tint: tint)
+            ProjectActivityTag(text: state, tint: tint)
         }
         .font(.system(size: 11, weight: .regular, design: .monospaced))
         .foregroundStyle(DTColor.dimmed)
@@ -724,27 +724,27 @@ private struct SeedActivityMetaGroup: View {
     }
 }
 
-private func rootboxSeedState(for matter: MatterSnapshot) -> String {
+private func attentionIssueState(for matter: MatterSnapshot) -> String {
     guard let date = parseISODate(matter.updatedAt) else {
-        return "seed"
+        return "open"
     }
-    return Date().timeIntervalSince(date) > 7 * 86_400 ? "fading" : "seed"
+    return Date().timeIntervalSince(date) > 7 * 86_400 ? "stale" : "open"
 }
 
-private func formatRootboxTime(_ isoString: String, lens: RootboxLens) -> String {
+private func formatAttentionTime(_ isoString: String, lens: AttentionLens) -> String {
     guard let date = parseISODate(isoString) else {
         return isoString
     }
 
     if lens == .current || Calendar.current.isDateInToday(date) {
-        return formatRootboxRelative(date)
+        return formatAttentionRelative(date)
     }
 
     let days = max(1, Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 1)
-    return "\(days)d ago · \(formatRootboxMonthDay(date))"
+    return "\(days)d ago · \(formatAttentionMonthDay(date))"
 }
 
-private func formatRootboxRelative(_ date: Date) -> String {
+private func formatAttentionRelative(_ date: Date) -> String {
     let seconds = max(0, Int(Date().timeIntervalSince(date)))
     if seconds < 60 {
         return "now"
@@ -760,13 +760,13 @@ private func formatRootboxRelative(_ date: Date) -> String {
     return "\(days)d ago"
 }
 
-private func formatRootboxMonthDay(_ date: Date) -> String {
+private func formatAttentionMonthDay(_ date: Date) -> String {
     let formatter = DateFormatter()
     formatter.dateFormat = "MMM d"
     return formatter.string(from: date)
 }
 
-private struct RootboxHairline: View {
+private struct AttentionHairline: View {
     var body: some View {
         Rectangle()
             .fill(Color.black.opacity(0.055))

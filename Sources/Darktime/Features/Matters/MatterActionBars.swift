@@ -14,7 +14,7 @@ struct InboxClearActionBar: View {
             action("Drop", "xmark", "dropped", tint: DTColor.dimmed)
             action("Later", "clock", "later", tint: DTColor.cyan)
             action("Done", "checkmark", "done", tint: DTColor.green)
-            action("Rootbox", "tree", "rootbox", tint: DTColor.green)
+            action("Issue", "circle.dotted", "issue", tint: DTColor.green)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -31,7 +31,7 @@ struct InboxClearActionBar: View {
     }
 }
 
-struct RootboxActionBar: View {
+struct IssueActionBar: View {
     @ObservedObject var model: DashboardModel
     let matter: MatterSnapshot
 
@@ -55,5 +55,4 @@ struct RootboxActionBar: View {
         .controlSize(.small)
     }
 }
-
 

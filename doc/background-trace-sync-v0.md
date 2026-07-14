@@ -4,7 +4,7 @@
 
 Darktime should not block the UI while reading external systems.
 
-Rootbox and Timeline should read local cached state. External connectors should sync traces into SQLite in the background.
+Attention and Timeline should read local cached state. External connectors should sync traces into SQLite in the background.
 
 The first painful example is local git:
 
@@ -85,8 +85,8 @@ For local git, `external_id` should be the commit hash so imports are idempotent
 - Move local git commit scanning into a background task.
 - Import local git commits into `output_traces`.
 - Keep UI responsive while sync runs.
-- Show a small Rootbox sync status for syncing, last synced, and failure states.
-- Build Rootbox state and Timeline from cached traces where possible.
+- Show a small Attention sync status for syncing, last synced, and failure states.
+- Build Project activity state and Timeline from cached traces where possible.
 - Keep the existing local repo root UI behavior.
 
 ## Out Of Scope

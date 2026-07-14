@@ -2,7 +2,7 @@
 
 ## 目标
 
-这次拆分的目标不是重写功能，而是把已经变大的 MVP 代码按职责拆开，让后续继续打磨 Capture、Inbox、Clear、Rootbox 时不再挤进一个大文件里。
+这次拆分的目标不是重写功能，而是把已经变大的 MVP 代码按职责拆开，让后续继续打磨 Capture、Inbox、Clear、Attention 时不再挤进一个大文件里。
 
 本分支优先做结构整理：
 
@@ -28,7 +28,7 @@ src/mcp-server.ts                                 约 970 行
 - Window / Quick Capture Panel 管理
 - DashboardModel 状态模型
 - 主界面布局
-- Capture / Inbox / Rootbox / Calendar 页面
+- Capture / Inbox / Attention / Calendar 页面
 - Quick Capture 输入框
 - 通用 UI 组件
 - 颜色、日期格式化等工具函数
@@ -74,8 +74,8 @@ Sources/Darktime/
     Inbox/
       InboxWorkspace.swift
 
-    Rootbox/
-      RootboxWorkspace.swift
+    Attention/
+      AttentionWorkspace.swift
 
     Matters/
       MatterWorkspace.swift
@@ -146,9 +146,9 @@ Sources/Darktime/
 - 全局快捷 capture 浮窗。
 - 这是用户高频入口，所以单独成为 feature。
 
-`Features/Inbox` / `Features/Rootbox` / `Features/Matters`
+`Features/Inbox` / `Features/Attention` / `Features/Matters`
 
-- Inbox 和 Rootbox 页面。
+- Inbox 和 Attention 页面。
 - Matters 里放这些页面共享的列表和动作条。
 
 `Features/CalendarIntegration`
@@ -211,7 +211,7 @@ Bridge/
 
 1. 顶层模块曾经叫 `CalendarBridge`，但产品已经从日历桥接变成 Darktime。这个名字会误导读代码的人，以为 Calendar 是主产品。
 2. `DashboardModel` 仍然承担太多职责：UI state、Matter 操作、Calendar authorization、MCP command、Storage refresh 都在一起。
-3. Apple Calendar、MCP、本地 Inbox、Rootbox 是不同领域能力，但目前还没有形成清楚的 domain/service 边界。
+3. Apple Calendar、MCP、本地 Inbox、Attention 是不同领域能力，但目前还没有形成清楚的 domain/service 边界。
 
 所以拆完文件后，下一步不是继续把文件切得更碎，而是把逻辑层次整理出来：
 
@@ -223,7 +223,7 @@ Product State
   selected workspace, current matters, quick capture draft
 
 Domain
-  Matter, Inbox, Rootbox, Capture
+  Matter, Inbox, Attention, Capture
 
 Services
   Local storage
@@ -303,7 +303,7 @@ npm run build:dmg
 
 - `CalendarAppUI.swift` 不再是主容器文件，最好缩小到 0 或只剩极少兼容入口。
 - Quick Capture 相关代码进入独立目录。
-- Capture / Inbox / Rootbox / Calendar 页面各自独立。
+- Capture / Inbox / Attention / Calendar 页面各自独立。
 - 主 Dashboard 文件只负责组合布局。
 - 构建通过。
 - 产品行为保持不变。

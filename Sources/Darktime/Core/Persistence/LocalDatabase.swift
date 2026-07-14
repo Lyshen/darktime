@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 enum LocalDatabase {
-    static let matterStatuses = ["inbox", "today", "later", "done", "dropped", "rootbox"]
+    static let matterStatuses = ["inbox", "today", "later", "done", "dropped", "issue"]
 
     private struct ShortcutImportLocation {
         let rootURL: URL
@@ -154,7 +154,8 @@ enum LocalDatabase {
             """,
             db: db
         )
-        try migrateRoots(db: db)
+        try migrateProjects(db: db)
+        try migrateMatterStatuses(db: db)
     }
 
     static func importShortcutInbox() throws -> Int {
@@ -252,12 +253,12 @@ enum LocalDatabase {
         )
     }
 
-    static func createLocalRepoRoot(title: String, localPath: String, intention: String? = nil) throws -> RootSnapshot {
+    static func createLocalRepoProject(title: String, localPath: String, intention: String? = nil) throws -> ProjectSnapshot {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPath = localPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedIntention = intention?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else {
-            throw StorageError.invalidInput("Root title cannot be empty.")
+            throw StorageError.invalidInput("Project title cannot be empty.")
         }
         guard !trimmedPath.isEmpty else {
             throw StorageError.invalidInput("Local repo path cannot be empty.")
@@ -266,7 +267,7 @@ enum LocalDatabase {
         let db = try openDatabase()
         defer { sqlite3_close(db) }
 
-        if let existing = try root(localPath: trimmedPath, db: db) {
+        if let existing = try project(localPath: trimmedPath, db: db) {
             if existing.intention == nil, let intention = normalizedOptional(trimmedIntention) {
                 let now = isoNow()
                 try executePrepared(
@@ -278,7 +279,7 @@ enum LocalDatabase {
                     values: [intention, now, existing.id],
                     db: db
                 )
-                return RootSnapshot(
+                return ProjectSnapshot(
                     id: existing.id,
                     title: existing.title,
                     intention: intention,
@@ -309,7 +310,7 @@ enum LocalDatabase {
             db: db
         )
 
-        return RootSnapshot(
+        return ProjectSnapshot(
             id: id,
             title: trimmedTitle,
             intention: normalizedOptional(trimmedIntention),
@@ -320,28 +321,28 @@ enum LocalDatabase {
         )
     }
 
-    static func linkMatterToLocalRepoRoot(matter: MatterSnapshot, title: String, localPath: String) throws -> RootSnapshot {
-        let root = try createLocalRepoRoot(
+    static func linkMatterToLocalRepoProject(matter: MatterSnapshot, title: String, localPath: String) throws -> ProjectSnapshot {
+        let project = try createLocalRepoProject(
             title: title,
             localPath: localPath,
             intention: matter.text
         )
         _ = try updateMatterStatus(id: matter.id, status: "done")
-        return root
+        return project
     }
 
-    static func updateRoot(id: String, title: String, intention: String?) throws -> RootSnapshot {
+    static func updateProject(id: String, title: String, intention: String?) throws -> ProjectSnapshot {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedIntention = intention?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else {
-            throw StorageError.invalidInput("Root title cannot be empty.")
+            throw StorageError.invalidInput("Project title cannot be empty.")
         }
 
         let db = try openDatabase()
         defer { sqlite3_close(db) }
 
-        guard let current = try root(id: id, db: db) else {
-            throw StorageError.notFound("Root \(id) was not found.")
+        guard let current = try project(id: id, db: db) else {
+            throw StorageError.notFound("Project \(id) was not found.")
         }
 
         let now = isoNow()
@@ -355,7 +356,7 @@ enum LocalDatabase {
             db: db
         )
 
-        return RootSnapshot(
+        return ProjectSnapshot(
             id: current.id,
             title: trimmedTitle,
             intention: normalizedOptional(trimmedIntention),
@@ -366,12 +367,12 @@ enum LocalDatabase {
         )
     }
 
-    static func removeRoot(id: String) throws {
+    static func removeProject(id: String) throws {
         let db = try openDatabase()
         defer { sqlite3_close(db) }
 
-        guard try root(id: id, db: db) != nil else {
-            throw StorageError.notFound("Root \(id) was not found.")
+        guard try project(id: id, db: db) != nil else {
+            throw StorageError.notFound("Project \(id) was not found.")
         }
 
         try exec("BEGIN TRANSACTION;", db: db)
@@ -433,7 +434,7 @@ enum LocalDatabase {
                     """,
                     values: [
                         UUID().uuidString,
-                        trace.rootId,
+                        trace.projectId,
                         trace.source,
                         trace.kind,
                         trace.externalId,
@@ -581,7 +582,7 @@ enum LocalDatabase {
         return try queryPrepared(sql, values: values, db: db, row: matterSnapshot)
     }
 
-    static func recentRoots(limit: Int = 80) throws -> [RootSnapshot] {
+    static func recentProjects(limit: Int = 80) throws -> [ProjectSnapshot] {
         let db = try openDatabase()
         defer { sqlite3_close(db) }
 
@@ -592,7 +593,7 @@ enum LocalDatabase {
             LIMIT \(max(1, limit));
             """
 
-        return try query(sql, db: db, row: rootSnapshot)
+        return try query(sql, db: db, row: projectSnapshot)
     }
 
     static func recentOutputTraces(limit: Int = 5_000) throws -> [OutputTraceSnapshot] {
@@ -757,7 +758,7 @@ enum LocalDatabase {
         return rows.first
     }
 
-    private static func root(localPath: String, db: OpaquePointer) throws -> RootSnapshot? {
+    private static func project(localPath: String, db: OpaquePointer) throws -> ProjectSnapshot? {
         let rows = try queryPrepared(
             """
             SELECT id, title, intention, kind, local_path, created_at, updated_at
@@ -767,12 +768,12 @@ enum LocalDatabase {
             """,
             values: [localPath],
             db: db,
-            row: rootSnapshot
+            row: projectSnapshot
         )
         return rows.first
     }
 
-    private static func root(id: String, db: OpaquePointer) throws -> RootSnapshot? {
+    private static func project(id: String, db: OpaquePointer) throws -> ProjectSnapshot? {
         let rows = try queryPrepared(
             """
             SELECT id, title, intention, kind, local_path, created_at, updated_at
@@ -782,7 +783,7 @@ enum LocalDatabase {
             """,
             values: [id],
             db: db,
-            row: rootSnapshot
+            row: projectSnapshot
         )
         return rows.first
     }
@@ -897,7 +898,7 @@ enum LocalDatabase {
         }
     }
 
-    private static func migrateRoots(db: OpaquePointer) throws {
+    private static func migrateProjects(db: OpaquePointer) throws {
         do {
             try exec("ALTER TABLE roots ADD COLUMN intention TEXT;", db: db)
         } catch StorageError.sqlite(let message) where message.localizedCaseInsensitiveContains("duplicate column") {
@@ -905,6 +906,17 @@ enum LocalDatabase {
         } catch {
             throw error
         }
+    }
+
+    private static func migrateMatterStatuses(db: OpaquePointer) throws {
+        try exec(
+            """
+            UPDATE matters SET status = 'issue' WHERE status = 'rootbox';
+            UPDATE matter_logs SET from_status = 'issue' WHERE from_status = 'rootbox';
+            UPDATE matter_logs SET to_status = 'issue' WHERE to_status = 'rootbox';
+            """,
+            db: db
+        )
     }
 
     private static func executePrepared(_ sql: String, values: [String?], db: OpaquePointer) throws {
@@ -981,12 +993,12 @@ enum LocalDatabase {
         )
     }
 
-    private static func rootSnapshot(_ statement: OpaquePointer) -> RootSnapshot {
-        RootSnapshot(
+    private static func projectSnapshot(_ statement: OpaquePointer) -> ProjectSnapshot {
+        ProjectSnapshot(
             id: columnText(statement, 0) ?? "",
             title: columnText(statement, 1) ?? "",
             intention: columnText(statement, 2),
-            kind: columnText(statement, 3) ?? "seed",
+            kind: columnText(statement, 3) ?? "local_repo",
             localPath: columnText(statement, 4),
             createdAt: columnText(statement, 5) ?? "",
             updatedAt: columnText(statement, 6) ?? ""
@@ -996,7 +1008,7 @@ enum LocalDatabase {
     private static func outputTraceSnapshot(_ statement: OpaquePointer) -> OutputTraceSnapshot {
         OutputTraceSnapshot(
             id: columnText(statement, 0) ?? "",
-            rootId: columnText(statement, 1) ?? "",
+            projectId: columnText(statement, 1) ?? "",
             source: columnText(statement, 2) ?? "",
             kind: columnText(statement, 3) ?? "",
             externalId: columnText(statement, 4),

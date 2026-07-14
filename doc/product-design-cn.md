@@ -1,117 +1,48 @@
 # Darktime 最小产品逻辑
 
-这份文档只讨论 Darktime 的第一层产品逻辑。
+当前正式产品语言见 [domain-language-v0.md](domain-language-v0.md)。
 
-先不讨论 AI、多日历、日历事件、习惯系统、计划系统、统计分析、自动排程。
+## 核心判断
 
-## 核心问题
+Darktime 不是日历、待办、笔记或聊天机器人。
 
-很多事情已经进入了人的注意力，但还没有被安放。
-
-它们可能是一个临时想法、一次朋友邀约、一个工作承诺、一件生活琐事，或者一个想长期坚持的方向。
-
-如果这些事情一直停在脑子里，就会变成压力、遗漏和注意力噪音。
-
-Darktime 要先解决的是：
-
-> 让这些占用注意力的事情先被收住，再被清理，最后只有真正值得留下的东西继续生长。
-
-## Matter
-
-Matter 是 Darktime 最小的内容单位。
-
-它表示一件正在占用用户注意力的事。
-
-Matter 不需要一开始就被判断成任务、计划、习惯、记录或日历事件。
-
-它只需要先被承认：
-
-> 这件事存在，并且它正在占用我的注意力。
-
-## Capture
-
-Capture 是把 Matter 放进 Darktime 的动作。
-
-它的目标是降低记录成本，让用户能快速把事情从脑子里拿出来。
-
-第一版 Capture 可以来自：
-
-- Mac App 手动输入。
-- Siri / Shortcut 语音输入。
-- 本机工具写入。
-
-Capture 阶段不要求用户分类、排期、补充细节。
-
-## Inbox
-
-Inbox 是新 Matter 的临时收纳区。
-
-它接住所有刚被 Capture 的内容。
-
-Inbox 的价值是允许事情暂时混乱、模糊、不完整。
-
-用户不需要在记录的那一刻决定这件事应该怎么处理。
-
-## Clear
-
-Clear 是处理 Inbox 的动作。
-
-它是 Darktime 的核心动作。
-
-用户在 Clear 时判断：
-
-> 这件事应该被放下、处理、安排，还是留下来继续生长？
-
-Clear 的目标不是把所有事情都变成任务，而是减少悬挂和噪音。
-
-## Rootbox
-
-Rootbox 是 Clear 之后，真正值得留下的 Matter 的容器。
-
-它不是 Inbox，也不是待办列表。
-
-Inbox 负责临时接住一切。
-
-Rootbox 只保留经过判断后仍然有价值、值得持续生长的东西。
-
-例如：
-
-- 一个长期想推进的方向。
-- 一个值得反复思考的生活问题。
-- 一个可能发展成计划的想法。
-- 一个持续出现的注意力模式。
-
-Rootbox 的意义是：
-
-> 不是所有输入都值得保留，但值得保留的东西应该有地方扎根。
-
-## 最小链路
+它先解决一个更小的问题：
 
 ```text
-Matter
--> Capture
--> Inbox
--> Clear
--> Rootbox
+哪些事情正在占用我的注意力？
+哪些只是噪音？
+哪些值得成为 Issue？
+哪些已经值得作为 Project 持续投入？
+我实际有没有在这些 Project 上产生 Output？
 ```
 
-更准确地说：
+## 最小闭环
 
 ```text
-Capture 把 Matter 放进 Inbox
-Clear 从 Inbox 中处理 Matter
-只有值得留下的 Matter 进入 Rootbox
-其他 Matter 可以被处理、安排或放下
+Capture -> Inbox -> Clear -> Issue / Done / Dropped
+Issue -> Project
+Project -> Output Trace
+Attention View -> 看见当前注意力与真实投入
 ```
 
-## 第一版要验证什么
+## 为什么不是 Rootbox
 
-第一版要验证的不是功能多不多，而是这条链路是否成立：
+早期的 `Rootbox / Seed` 是讨论隐喻。
 
-- 用户是否愿意把 Matter 放进 Darktime。
-- Inbox 是否能降低脑内负担。
-- Clear 是否能帮助用户做判断和减法。
-- Rootbox 是否能承载真正值得长期留下的内容。
-- 这个过程是否比直接放进备忘录、待办或日历更自然。
+现在把它拆开：
 
-如果这条链路成立，Darktime 才有继续扩展 AI、日历、移动端、计划和习惯系统的基础。
+- `Issue` 是被承认值得注意力处理的事项。
+- `Project` 是值得持续投入的容器。
+- `Attention View` 是显示 Issue + Project + Output Trace 的 UI 聚合视图。
+
+所以不存在一个叫 Rootbox 的业务实体。
+
+## 第一版要验证
+
+- 用户是否愿意快速 Capture。
+- Inbox 是否真的降低脑内负担。
+- Clear 是否能把 Matter 分成 Done / Dropped / Issue。
+- Issue 是否能自然长成 Project。
+- Project timeline 是否能让用户看见真实注意力投入。
+
+如果这条链路成立，再继续做 Today、Project Detail、AI observer。
