@@ -1,6 +1,6 @@
 import Foundation
 
-struct LocalGitCommitTrace: Sendable {
+struct LocalGitCommitAction: Sendable {
     let hash: String
     let date: String
     let summary: String
@@ -64,8 +64,8 @@ enum LocalGitRepositoryService {
         }
     }
 
-    static func commitTraces(at path: String, since: String = "1 year ago") throws -> [LocalGitCommitTrace] {
-        let recent = try gitCommitTraces(
+    static func commitActions(at path: String, since: String = "1 year ago") throws -> [LocalGitCommitAction] {
+        let recent = try gitCommitActions(
             arguments: ["-C", path, "log", "--since=\(since)", "--max-count=800", "--format=%H%x1f%cI%x1f%s"]
         )
 
@@ -73,7 +73,7 @@ enum LocalGitRepositoryService {
             return recent
         }
 
-        return try gitCommitTraces(
+        return try gitCommitActions(
             arguments: ["-C", path, "log", "-1", "--format=%H%x1f%cI%x1f%s"]
         )
     }
@@ -118,7 +118,7 @@ enum LocalGitRepositoryService {
         )
     }
 
-    private static func gitCommitTraces(arguments: [String]) throws -> [LocalGitCommitTrace] {
+    private static func gitCommitActions(arguments: [String]) throws -> [LocalGitCommitAction] {
         let output = try runGit(arguments: arguments, allowFailure: false)
 
         return output
@@ -129,7 +129,7 @@ enum LocalGitRepositoryService {
                     return nil
                 }
 
-                return LocalGitCommitTrace(
+                return LocalGitCommitAction(
                     hash: String(parts[0]),
                     date: String(parts[1]),
                     summary: parts.count > 2 ? String(parts[2]) : "Commit"

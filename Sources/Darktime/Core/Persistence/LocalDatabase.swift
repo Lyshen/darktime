@@ -400,8 +400,8 @@ enum LocalDatabase {
         }
     }
 
-    static func upsertOutputTraces(_ traces: [OutputTraceUpsert]) throws -> Int {
-        guard !traces.isEmpty else {
+    static func upsertActions(_ actions: [ActionUpsert]) throws -> Int {
+        guard !actions.isEmpty else {
             return 0
         }
 
@@ -412,7 +412,7 @@ enum LocalDatabase {
         var changedCount = 0
         try exec("BEGIN TRANSACTION;", db: db)
         do {
-            for trace in traces {
+            for action in actions {
                 try executePrepared(
                     """
                     INSERT INTO output_traces (
@@ -434,13 +434,13 @@ enum LocalDatabase {
                     """,
                     values: [
                         UUID().uuidString,
-                        trace.projectId,
-                        trace.source,
-                        trace.kind,
-                        trace.externalId,
-                        trace.happenedAt,
-                        trace.summary,
-                        trace.metadataJson,
+                        action.projectId,
+                        action.source,
+                        action.kind,
+                        action.externalId,
+                        action.happenedAt,
+                        action.summary,
+                        action.metadataJson,
                         now
                     ],
                     db: db
@@ -652,7 +652,7 @@ enum LocalDatabase {
         return try query(sql, db: db, row: projectSnapshot)
     }
 
-    static func recentOutputTraces(limit: Int = 5_000) throws -> [OutputTraceSnapshot] {
+    static func recentActions(limit: Int = 5_000) throws -> [ActionSnapshot] {
         let db = try openDatabase()
         defer { sqlite3_close(db) }
 
@@ -672,7 +672,7 @@ enum LocalDatabase {
             LIMIT \(max(1, limit));
             """
 
-        return try query(sql, db: db, row: outputTraceSnapshot)
+        return try query(sql, db: db, row: actionSnapshot)
     }
 
     static func recentMatterLogs(limit: Int = 30) throws -> [MatterLogSnapshot] {
@@ -1061,8 +1061,8 @@ enum LocalDatabase {
         )
     }
 
-    private static func outputTraceSnapshot(_ statement: OpaquePointer) -> OutputTraceSnapshot {
-        OutputTraceSnapshot(
+    private static func actionSnapshot(_ statement: OpaquePointer) -> ActionSnapshot {
+        ActionSnapshot(
             id: columnText(statement, 0) ?? "",
             projectId: columnText(statement, 1) ?? "",
             source: columnText(statement, 2) ?? "",

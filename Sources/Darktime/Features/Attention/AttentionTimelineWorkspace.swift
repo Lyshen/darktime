@@ -187,7 +187,7 @@ struct AttentionTimelineRangePicker: View {
 
 struct AttentionTimelineWorkspace: View {
     let repos: [LocalRepoSnapshot]
-    let traces: [OutputTraceSnapshot]
+    let actions: [ActionSnapshot]
     let range: AttentionTimelineRange
 
     var body: some View {
@@ -199,8 +199,8 @@ struct AttentionTimelineWorkspace: View {
                 if rows.isEmpty {
                     EmptyStateLine(
                         systemImage: "waveform.path.ecg",
-                        title: "No project traces",
-                        detail: "Add a local repo to see attention output over time."
+                        title: "No project actions",
+                        detail: "Add a local repo to see real movement over time."
                     )
                 } else {
                     AttentionTimelineAxis(range: range, buckets: buckets)
@@ -223,12 +223,12 @@ struct AttentionTimelineWorkspace: View {
     }
 
     private func timelineRows(for buckets: [AttentionTimelineBucket]) -> [AttentionTimelineRowData] {
-        let commitTraces = traces.filter { $0.source == "local_git" && $0.kind == "commit" }
-        let tracesByProject = Dictionary(grouping: commitTraces, by: \.projectId)
+        let commitActions = actions.filter { $0.source == "local_git" && $0.kind == "commit" }
+        let actionsByProject = Dictionary(grouping: commitActions, by: \.projectId)
 
         return repos
             .map { repo in
-                let dates = (tracesByProject[repo.project.id] ?? []).compactMap { parseISODate($0.happenedAt) }
+                let dates = (actionsByProject[repo.project.id] ?? []).compactMap { parseISODate($0.happenedAt) }
                 let counts = buckets.map { bucket in
                     dates.filter { $0 >= bucket.start && $0 < bucket.end }.count
                 }

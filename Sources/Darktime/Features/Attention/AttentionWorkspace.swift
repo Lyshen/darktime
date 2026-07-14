@@ -51,7 +51,7 @@ struct AttentionWorkspace: View {
             case .timeline:
                 AttentionTimelineWorkspace(
                     repos: model.localRepoSnapshots,
-                    traces: model.outputTraces,
+                    actions: model.actions,
                     range: timelineRange
                 )
             }
@@ -146,7 +146,7 @@ private struct AttentionTopBar: View {
                 .font(.system(size: 13, weight: .semibold, design: .default))
                 .foregroundStyle(DTColor.text)
             Spacer()
-            ProjectTraceSyncStatus(model: model)
+            ProjectActionSyncStatus(model: model)
             AttentionModeSwitch(selection: $mode)
             if mode == .items {
                 AttentionLensMenu(selection: $lens)
@@ -163,7 +163,7 @@ private struct AttentionTopBar: View {
     }
 }
 
-private struct ProjectTraceSyncStatus: View {
+private struct ProjectActionSyncStatus: View {
     @ObservedObject var model: DashboardModel
 
     var body: some View {
@@ -190,53 +190,53 @@ private struct ProjectTraceSyncStatus: View {
     }
 
     private var shouldShow: Bool {
-        model.isSyncingTraces ||
-            model.traceSyncError != nil ||
-            model.traceSyncLastFinishedAt != nil ||
+        model.isSyncingActions ||
+            model.actionSyncError != nil ||
+            model.actionSyncLastFinishedAt != nil ||
             !model.localRepoSnapshots.isEmpty
     }
 
     private var label: String {
-        if model.isSyncingTraces {
+        if model.isSyncingActions {
             return "Syncing"
         }
-        if model.traceSyncError != nil {
+        if model.actionSyncError != nil {
             return "Sync failed"
         }
-        if let lastFinishedAt = model.traceSyncLastFinishedAt {
+        if let lastFinishedAt = model.actionSyncLastFinishedAt {
             return "Synced \(formatRelative(lastFinishedAt))"
         }
         return "Not synced"
     }
 
     private var helpText: String {
-        if let error = model.traceSyncError {
+        if let error = model.actionSyncError {
             return error
         }
-        if model.isSyncingTraces {
-            return "Syncing local git output traces."
+        if model.isSyncingActions {
+            return "Syncing local git actions."
         }
-        if let lastFinishedAt = model.traceSyncLastFinishedAt {
-            return "Last sync \(formatLocalDateTime(lastFinishedAt)). \(model.traceSyncLastChangeCount) traces changed."
+        if let lastFinishedAt = model.actionSyncLastFinishedAt {
+            return "Last sync \(formatLocalDateTime(lastFinishedAt)). \(model.actionSyncLastChangeCount) actions changed."
         }
-        return "Local git traces have not synced yet."
+        return "Local git actions have not synced yet."
     }
 
     private var systemImage: String {
-        if model.isSyncingTraces {
+        if model.isSyncingActions {
             return "arrow.triangle.2.circlepath"
         }
-        if model.traceSyncError != nil {
+        if model.actionSyncError != nil {
             return "exclamationmark.triangle"
         }
         return "checkmark.circle"
     }
 
     private var tint: Color {
-        if model.isSyncingTraces {
+        if model.isSyncingActions {
             return DTColor.cyan
         }
-        if model.traceSyncError != nil {
+        if model.actionSyncError != nil {
             return DTColor.amber
         }
         return DTColor.dimmed
