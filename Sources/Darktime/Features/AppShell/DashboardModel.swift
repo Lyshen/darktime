@@ -213,6 +213,19 @@ final class DashboardModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    func updateIssue(_ issue: MatterSnapshot, text: String) -> Bool {
+        do {
+            _ = try MatterRepository.updateMatterText(issue, text: text)
+            refresh()
+            return true
+        } catch {
+            storageReady = false
+            storageError = String(describing: error)
+            return false
+        }
+    }
+
     func refreshRepoProjects() {
         scheduleLocalRepoTraceSync(force: true)
     }

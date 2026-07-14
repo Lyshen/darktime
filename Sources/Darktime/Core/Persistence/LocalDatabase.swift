@@ -511,6 +511,62 @@ enum LocalDatabase {
         )
     }
 
+    static func updateMatterText(id: String, text: String) throws -> MatterSnapshot {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw StorageError.invalidInput("Matter text cannot be empty.")
+        }
+
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        guard let current = try matter(id: id, db: db) else {
+            throw StorageError.notFound("Matter \(id) was not found.")
+        }
+
+        let now = isoNow()
+        try exec("BEGIN TRANSACTION;", db: db)
+        do {
+            try executePrepared(
+                """
+                UPDATE matters
+                SET text = ?, updated_at = ?
+                WHERE id = ?;
+                """,
+                values: [trimmed, now, id],
+                db: db
+            )
+            try executePrepared(
+                """
+                INSERT INTO matter_logs (
+                  matter_id,
+                  created_at,
+                  action,
+                  from_status,
+                  to_status,
+                  summary
+                ) VALUES (?, ?, 'text_changed', ?, ?, ?);
+                """,
+                values: [id, now, current.status, current.status, "Updated matter text"],
+                db: db
+            )
+            try exec("COMMIT;", db: db)
+        } catch {
+            try? exec("ROLLBACK;", db: db)
+            throw error
+        }
+
+        return MatterSnapshot(
+            id: current.id,
+            text: trimmed,
+            status: current.status,
+            source: current.source,
+            createdAt: current.createdAt,
+            updatedAt: now,
+            rawPayloadJson: current.rawPayloadJson
+        )
+    }
+
     static func deleteExpiredDroppedMatters(olderThanDays days: Int) throws {
         let cutoffDate = Calendar.current.date(
             byAdding: .day,

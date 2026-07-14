@@ -47,6 +47,10 @@ enum MatterRepository {
         try LocalDatabase.updateMatterStatus(id: matter.id, status: status)
     }
 
+    static func updateMatterText(_ matter: MatterSnapshot, text: String) throws -> MatterSnapshot {
+        try LocalDatabase.updateMatterText(id: matter.id, text: text)
+    }
+
     static func createLocalRepoProject(title: String, localPath: String, intention: String? = nil) throws -> ProjectSnapshot {
         try LocalDatabase.createLocalRepoProject(title: title, localPath: localPath, intention: intention)
     }

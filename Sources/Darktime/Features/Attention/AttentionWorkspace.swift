@@ -644,10 +644,11 @@ private struct IssueRow: View {
     @ObservedObject var model: DashboardModel
     let matter: MatterSnapshot
     @State private var isHovering = false
+    @State private var isEditing = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
-            Image(systemName: "leaf.fill")
+            Image(systemName: "circle.dotted")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(issueTint)
                 .frame(width: 28, height: 28)
@@ -671,6 +672,9 @@ private struct IssueRow: View {
                         .opacity(isHovering ? 0 : 1)
 
                         HStack(spacing: 2) {
+                            AttentionRowActionButton("Edit") {
+                                isEditing = true
+                            }
                             AttentionRowActionButton("Make Project") {
                                 model.linkIssueToLocalRepoProject(matter)
                             }
@@ -694,6 +698,9 @@ private struct IssueRow: View {
         .onHover { hovering in
             isHovering = hovering
         }
+        .sheet(isPresented: $isEditing) {
+            IssueEditSheet(model: model, issue: matter)
+        }
     }
 
     private var issueState: String {
@@ -704,6 +711,77 @@ private struct IssueRow: View {
         issueState == "stale" ? DTColor.dimmed : DTColor.amber
     }
 
+}
+
+private struct IssueEditSheet: View {
+    @ObservedObject var model: DashboardModel
+    let issue: MatterSnapshot
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var text: String
+    @State private var errorMessage: String?
+
+    init(model: DashboardModel, issue: MatterSnapshot) {
+        self.model = model
+        self.issue = issue
+        _text = State(initialValue: issue.text)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Edit Issue")
+                    .font(.system(size: 15, weight: .semibold, design: .default))
+                    .foregroundStyle(DTColor.text)
+                Text("Keep the wording clear enough to return to later.")
+                    .font(.system(size: 11, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.dimmed)
+            }
+
+            TextEditor(text: $text)
+                .font(.system(size: 13, weight: .regular, design: .default))
+                .frame(height: 120)
+                .padding(6)
+                .background(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                )
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 11, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+                Button("Cancel") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Save") {
+                    save()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 420)
+        .background(DTColor.workspace)
+    }
+
+    private func save() {
+        let ok = model.updateIssue(issue, text: text)
+        if ok {
+            dismiss()
+        } else {
+            errorMessage = model.storageError
+        }
+    }
 }
 
 private struct IssueActivityMetaGroup: View {
