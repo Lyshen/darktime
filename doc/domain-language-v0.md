@@ -69,6 +69,8 @@ Issue 是经过 Clear 后，被用户承认值得注意力处理的 Matter。
 
 Issue 不一定是软件开发里的 GitHub Issue，也不一定是“问题”。它是 Darktime 的基础事项单位。
 
+Issue 不是 todo。它在 MVP 里可以被编辑、丢弃，或在用户已经看到持续投入可能性时转成 Project；它不提供 Done 动作。
+
 ### Project
 
 Project 是值得持续投入的容器。
@@ -129,6 +131,7 @@ Capture
       -> Dropped
       -> Done
       -> Issue
+          -> Edit / Drop
           -> Make Project / Link Repo
               -> Project
                   -> Output Trace
