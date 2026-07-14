@@ -73,7 +73,7 @@ struct MatterLogSnapshot: Sendable {
     let metadataJson: String?
 }
 
-struct OutputTraceSnapshot: Sendable {
+struct ActionSnapshot: Sendable {
     let id: String
     let projectId: String
     let source: String
@@ -85,7 +85,7 @@ struct OutputTraceSnapshot: Sendable {
     let createdAt: String
 }
 
-struct OutputTraceUpsert: Sendable {
+struct ActionUpsert: Sendable {
     let projectId: String
     let source: String
     let kind: String

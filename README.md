@@ -199,6 +199,7 @@ Write tools require `confirm: true`.
 
 ## Design
 
-See [docs/calendar-mvp-design.md](/Users/lyshen/Desktop/project/darktime/docs/calendar-mvp-design.md).
+Product language and flow are in:
 
-Dashboard v0 requirements are in [doc/mvp-dashboard-v0.md](/Users/lyshen/Desktop/project/darktime/doc/mvp-dashboard-v0.md).
+- [Chinese](/Users/lyshen/Desktop/project/darktime/doc/product-language-cn.md)
+- [English](/Users/lyshen/Desktop/project/darktime/doc/product-language-en.md)

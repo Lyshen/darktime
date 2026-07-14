@@ -4,7 +4,7 @@ struct MatterRepositorySnapshot {
     let sessions: [MCPSessionSnapshot]
     let matters: [MatterSnapshot]
     let projects: [ProjectSnapshot]
-    let outputTraces: [OutputTraceSnapshot]
+    let actions: [ActionSnapshot]
 }
 
 enum MatterRepository {
@@ -35,7 +35,7 @@ enum MatterRepository {
             sessions: try LocalDatabase.recentSessions(limit: 12),
             matters: try LocalDatabase.recentMatters(limit: 180),
             projects: try LocalDatabase.recentProjects(limit: 80),
-            outputTraces: try LocalDatabase.recentOutputTraces(limit: 5_000)
+            actions: try LocalDatabase.recentActions(limit: 5_000)
         )
     }
 
@@ -68,18 +68,18 @@ enum MatterRepository {
     }
 
     @discardableResult
-    static func syncLocalGitTraces(projects: [ProjectSnapshot]) throws -> Int {
+    static func syncLocalGitActions(projects: [ProjectSnapshot]) throws -> Int {
         var failedProjects: [String] = []
-        let traces = projects.flatMap { project -> [OutputTraceUpsert] in
+        let actions = projects.flatMap { project -> [ActionUpsert] in
             guard let localPath = project.localPath else {
                 return []
             }
 
             do {
                 let repository = try LocalGitRepositoryService.resolveRepository(at: localPath)
-                return try LocalGitRepositoryService.commitTraces(at: repository.rootPath)
+                return try LocalGitRepositoryService.commitActions(at: repository.rootPath)
                     .map { commit in
-                        OutputTraceUpsert(
+                        ActionUpsert(
                             projectId: project.id,
                             source: "local_git",
                             kind: "commit",
@@ -95,11 +95,11 @@ enum MatterRepository {
             }
         }
 
-        if traces.isEmpty, !failedProjects.isEmpty {
-            throw StorageError.invalidInput("Unable to sync local git traces for \(failedProjects.joined(separator: ", ")).")
+        if actions.isEmpty, !failedProjects.isEmpty {
+            throw StorageError.invalidInput("Unable to sync local git actions for \(failedProjects.joined(separator: ", ")).")
         }
 
-        return try LocalDatabase.upsertOutputTraces(traces)
+        return try LocalDatabase.upsertActions(actions)
     }
 
     static func ensureShortcutFolders() throws {

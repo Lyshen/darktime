@@ -14,16 +14,16 @@ final class DashboardModel: ObservableObject {
     @Published var matters: [MatterSnapshot] = []
     @Published var projects: [ProjectSnapshot] = []
     @Published var localRepoSnapshots: [LocalRepoSnapshot] = []
-    @Published var outputTraces: [OutputTraceSnapshot] = []
+    @Published var actions: [ActionSnapshot] = []
     @Published var storageReady = false
     @Published var storageError: String?
     @Published var shortcutPendingCount = 0
     @Published var shortcutFailedCount = 0
     @Published var isRequestingAccess = false
-    @Published var isSyncingTraces = false
-    @Published var traceSyncError: String?
-    @Published var traceSyncLastFinishedAt: String?
-    @Published var traceSyncLastChangeCount = 0
+    @Published var isSyncingActions = false
+    @Published var actionSyncError: String?
+    @Published var actionSyncLastFinishedAt: String?
+    @Published var actionSyncLastChangeCount = 0
     @Published var copiedCommand = false
     @Published var quickCaptureDraft: String {
         didSet {
@@ -32,9 +32,9 @@ final class DashboardModel: ObservableObject {
     }
 
     private let calendarService = AppleCalendarService()
-    private var lastLocalRepoTraceSyncAt: Date?
-    private var lastLocalRepoTraceSyncProjectIDs = Set<String>()
-    private var localRepoTraceSyncTask: Task<Void, Never>?
+    private var lastLocalRepoActionSyncAt: Date?
+    private var lastLocalRepoActionSyncProjectIDs = Set<String>()
+    private var localRepoActionSyncTask: Task<Void, Never>?
 
     init() {
         quickCaptureDraft = UserDefaults.standard.string(forKey: Self.quickCaptureDraftKey) ?? ""
@@ -187,7 +187,7 @@ final class DashboardModel: ObservableObject {
             )
             selectedSection = .attention
             refresh()
-            scheduleLocalRepoTraceSync(force: true)
+            scheduleLocalRepoActionSync(force: true)
         } catch {
             storageError = error.localizedDescription
         }
@@ -207,7 +207,7 @@ final class DashboardModel: ObservableObject {
             )
             selectedSection = .attention
             refresh()
-            scheduleLocalRepoTraceSync(force: true)
+            scheduleLocalRepoActionSync(force: true)
         } catch {
             storageError = error.localizedDescription
         }
@@ -227,7 +227,7 @@ final class DashboardModel: ObservableObject {
     }
 
     func refreshRepoProjects() {
-        scheduleLocalRepoTraceSync(force: true)
+        scheduleLocalRepoActionSync(force: true)
     }
 
     @discardableResult
@@ -239,7 +239,7 @@ final class DashboardModel: ObservableObject {
                 intention: intention
             )
             refresh()
-            scheduleLocalRepoTraceSync(force: true)
+            scheduleLocalRepoActionSync(force: true)
             return true
         } catch {
             storageError = error.localizedDescription
@@ -323,9 +323,9 @@ final class DashboardModel: ObservableObject {
             sessions = snapshot.sessions
             matters = snapshot.matters
             projects = snapshot.projects
-            outputTraces = snapshot.outputTraces
-            refreshLocalRepoSnapshots(from: snapshot.outputTraces)
-            scheduleLocalRepoTraceSyncIfNeeded()
+            actions = snapshot.actions
+            refreshLocalRepoSnapshots(from: snapshot.actions)
+            scheduleLocalRepoActionSyncIfNeeded()
             refreshShortcutCounts()
             storageReady = true
             storageError = nil
@@ -334,50 +334,50 @@ final class DashboardModel: ObservableObject {
             matters = []
             projects = []
             localRepoSnapshots = []
-            outputTraces = []
+            actions = []
             storageReady = false
             storageError = String(describing: error)
         }
     }
 
-    private func refreshLocalRepoSnapshots(from traces: [OutputTraceSnapshot]) {
+    private func refreshLocalRepoSnapshots(from actions: [ActionSnapshot]) {
         let repoProjects = projects.filter { $0.kind == "local_repo" }
-        let tracesByProject = Dictionary(grouping: traces.filter { $0.source == "local_git" && $0.kind == "commit" }, by: \.projectId)
+        let actionsByProject = Dictionary(grouping: actions.filter { $0.source == "local_git" && $0.kind == "commit" }, by: \.projectId)
         localRepoSnapshots = repoProjects.compactMap { project in
-            cachedLocalRepoSnapshot(project: project, traces: tracesByProject[project.id] ?? [])
+            cachedLocalRepoSnapshot(project: project, actions: actionsByProject[project.id] ?? [])
         }
             .sorted { left, right in
                 localRepoSortKey(left) < localRepoSortKey(right)
             }
     }
 
-    private func cachedLocalRepoSnapshot(project: ProjectSnapshot, traces: [OutputTraceSnapshot]) -> LocalRepoSnapshot? {
+    private func cachedLocalRepoSnapshot(project: ProjectSnapshot, actions: [ActionSnapshot]) -> LocalRepoSnapshot? {
         guard let localPath = project.localPath else {
             return nil
         }
 
-        let sortedTraces = traces.sorted { $0.happenedAt > $1.happenedAt }
-        let latestTrace = sortedTraces.first
+        let sortedActions = actions.sorted { $0.happenedAt > $1.happenedAt }
+        let latestAction = sortedActions.first
 
         return LocalRepoSnapshot(
             project: project,
             repoName: URL(fileURLWithPath: localPath, isDirectory: true).lastPathComponent,
             rootPath: localPath,
             branch: "cached",
-            lastCommitAt: latestTrace?.happenedAt,
-            latestCommitSummary: latestTrace?.summary ?? (isSyncingTraces ? "Syncing local git..." : "No cached commits yet"),
-            commitsLast2Days: traceCount(in: sortedTraces, days: 2),
-            commitsLast7Days: traceCount(in: sortedTraces, days: 7),
-            commitsLast30Days: traceCount(in: sortedTraces, days: 30),
+            lastCommitAt: latestAction?.happenedAt,
+            latestCommitSummary: latestAction?.summary ?? (isSyncingActions ? "Syncing local git..." : "No actions yet"),
+            commitsLast2Days: actionCount(in: sortedActions, days: 2),
+            commitsLast7Days: actionCount(in: sortedActions, days: 7),
+            commitsLast30Days: actionCount(in: sortedActions, days: 30),
             hasUncommittedChanges: false,
-            state: localRepoState(lastOutputAt: latestTrace?.happenedAt)
+            state: localRepoState(lastOutputAt: latestAction?.happenedAt)
         )
     }
 
-    private func traceCount(in traces: [OutputTraceSnapshot], days: Int) -> Int {
+    private func actionCount(in actions: [ActionSnapshot], days: Int) -> Int {
         let cutoff = Date().addingTimeInterval(-Double(days) * 86_400)
-        return traces.filter { trace in
-            guard let date = parseISODate(trace.happenedAt) else {
+        return actions.filter { action in
+            guard let date = parseISODate(action.happenedAt) else {
                 return false
             }
             return date >= cutoff
@@ -405,50 +405,50 @@ final class DashboardModel: ObservableObject {
         return "inactive"
     }
 
-    private func scheduleLocalRepoTraceSyncIfNeeded() {
+    private func scheduleLocalRepoActionSyncIfNeeded() {
         let currentIDs = Set(projects.filter { $0.kind == "local_repo" }.map(\.id))
-        let projectsChanged = lastLocalRepoTraceSyncProjectIDs != currentIDs
+        let projectsChanged = lastLocalRepoActionSyncProjectIDs != currentIDs
 
-        if projectsChanged || lastLocalRepoTraceSyncAt == nil {
-            scheduleLocalRepoTraceSync(force: true)
+        if projectsChanged || lastLocalRepoActionSyncAt == nil {
+            scheduleLocalRepoActionSync(force: true)
             return
         }
 
-        guard let lastLocalRepoTraceSyncAt else {
-            scheduleLocalRepoTraceSync(force: true)
+        guard let lastLocalRepoActionSyncAt else {
+            scheduleLocalRepoActionSync(force: true)
             return
         }
 
-        if Date().timeIntervalSince(lastLocalRepoTraceSyncAt) > 120 {
-            scheduleLocalRepoTraceSync(force: false)
+        if Date().timeIntervalSince(lastLocalRepoActionSyncAt) > 120 {
+            scheduleLocalRepoActionSync(force: false)
         }
     }
 
-    private func scheduleLocalRepoTraceSync(force: Bool) {
+    private func scheduleLocalRepoActionSync(force: Bool) {
         let repoProjects = projects.filter { $0.kind == "local_repo" }
         guard !repoProjects.isEmpty else {
-            localRepoTraceSyncTask?.cancel()
-            localRepoTraceSyncTask = nil
-            isSyncingTraces = false
+            localRepoActionSyncTask?.cancel()
+            localRepoActionSyncTask = nil
+            isSyncingActions = false
             return
         }
 
-        if isSyncingTraces {
+        if isSyncingActions {
             return
         }
 
-        if !force, let lastLocalRepoTraceSyncAt, Date().timeIntervalSince(lastLocalRepoTraceSyncAt) < 120 {
+        if !force, let lastLocalRepoActionSyncAt, Date().timeIntervalSince(lastLocalRepoActionSyncAt) < 120 {
             return
         }
 
-        isSyncingTraces = true
-        traceSyncError = nil
+        isSyncingActions = true
+        actionSyncError = nil
         let projectsToSync = repoProjects
         let projectIDsToSync = Set(repoProjects.map(\.id))
-        localRepoTraceSyncTask = Task { [weak self, projectsToSync] in
+        localRepoActionSyncTask = Task { [weak self, projectsToSync] in
             let result = await Task.detached(priority: .utility) {
                 Result {
-                    try MatterRepository.syncLocalGitTraces(projects: projectsToSync)
+                    try MatterRepository.syncLocalGitActions(projects: projectsToSync)
                 }
             }.value
 
@@ -456,18 +456,18 @@ final class DashboardModel: ObservableObject {
                 guard let self else {
                     return
                 }
-                self.isSyncingTraces = false
-                self.lastLocalRepoTraceSyncAt = Date()
+                self.isSyncingActions = false
+                self.lastLocalRepoActionSyncAt = Date()
                 switch result {
                 case .success(let changedCount):
-                    self.traceSyncError = nil
-                    self.traceSyncLastFinishedAt = ISO8601DateFormatter().string(from: Date())
-                    self.traceSyncLastChangeCount = changedCount
-                    self.lastLocalRepoTraceSyncProjectIDs = projectIDsToSync
+                    self.actionSyncError = nil
+                    self.actionSyncLastFinishedAt = ISO8601DateFormatter().string(from: Date())
+                    self.actionSyncLastChangeCount = changedCount
+                    self.lastLocalRepoActionSyncProjectIDs = projectIDsToSync
                     self.refreshStorage()
                 case .failure(let error):
-                    self.traceSyncError = error.localizedDescription
-                    self.traceSyncLastFinishedAt = ISO8601DateFormatter().string(from: Date())
+                    self.actionSyncError = error.localizedDescription
+                    self.actionSyncLastFinishedAt = ISO8601DateFormatter().string(from: Date())
                 }
             }
         }
