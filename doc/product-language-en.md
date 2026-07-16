@@ -32,7 +32,7 @@ Capture
                   -> Action
 ```
 
-The current MVP supports manual Project Issues. GitHub Issues and PRs will use the same Issue model later.
+The current MVP supports manual Project Issues and can import open PRs from local repos as `Issue(kind: github_pr)` through `gh` CLI. Future GitHub Issue sync will use the same Issue model.
 
 ## Key Meanings
 
@@ -72,6 +72,7 @@ In:
 - Issue list, edit, drop, and make Project.
 - Manual Project Issues.
 - Local git repo Projects.
+- Open PRs from local repos imported as `github_pr` Issues.
 - Commits imported as Actions.
 - Attention Items and Timeline.
 

@@ -6,6 +6,18 @@ struct LocalGitCommitAction: Sendable {
     let summary: String
 }
 
+struct LocalGitPullRequestIssue: Sendable {
+    let number: Int
+    let title: String
+    let url: String
+    let state: String
+    let updatedAt: String?
+
+    var externalId: String {
+        "#\(number)"
+    }
+}
+
 enum LocalGitRepositoryService {
     static func resolveRepository(at path: String) throws -> (title: String, rootPath: String) {
         let rootPath = try runGit(
@@ -78,6 +90,60 @@ enum LocalGitRepositoryService {
         return try gitCommitActions(
             arguments: ["-C", path, "log", "-1", "--format=%H%x1f%cI%x1f%s"]
         )
+    }
+
+    static func githubRepositorySlug(at path: String) -> String? {
+        guard
+            let remote = try? runGit(
+                arguments: ["-C", path, "remote", "get-url", "origin"],
+                allowFailure: true
+            )
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            !remote.isEmpty
+        else {
+            return nil
+        }
+        return parseGitHubSlug(remote)
+    }
+
+    static func openPullRequestIssues(repoSlug: String) throws -> [LocalGitPullRequestIssue] {
+        let output = try runTool(
+            executable: "/usr/bin/env",
+            arguments: [
+                "gh",
+                "pr",
+                "list",
+                "--repo",
+                repoSlug,
+                "--state",
+                "open",
+                "--limit",
+                "100",
+                "--json",
+                "number,title,url,state,updatedAt"
+            ],
+            allowFailure: false,
+            timeout: 12
+        )
+
+        struct GHPullRequest: Decodable {
+            let number: Int
+            let title: String
+            let url: String
+            let state: String
+            let updatedAt: String?
+        }
+
+        return try JSONDecoder().decode([GHPullRequest].self, from: Data(output.utf8))
+            .map {
+                LocalGitPullRequestIssue(
+                    number: $0.number,
+                    title: $0.title,
+                    url: $0.url,
+                    state: $0.state.lowercased(),
+                    updatedAt: $0.updatedAt
+                )
+            }
     }
 
     private static func currentBranch(at path: String) -> String {
@@ -182,12 +248,58 @@ enum LocalGitRepositoryService {
         return formatter.date(from: value)
     }
 
+    private static func parseGitHubSlug(_ remote: String) -> String? {
+        let trimmed = remote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let patterns = [
+            #"^git@github\.com:([^/]+)/(.+?)(?:\.git)?$"#,
+            #"^https://github\.com/([^/]+)/(.+?)(?:\.git)?$"#,
+            #"^ssh://git@github\.com/([^/]+)/(.+?)(?:\.git)?$"#
+        ]
+
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else {
+                continue
+            }
+            let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+            guard let match = regex.firstMatch(in: trimmed, range: range), match.numberOfRanges >= 3 else {
+                continue
+            }
+            guard
+                let ownerRange = Range(match.range(at: 1), in: trimmed),
+                let repoRange = Range(match.range(at: 2), in: trimmed)
+            else {
+                continue
+            }
+
+            let owner = String(trimmed[ownerRange])
+            let repo = String(trimmed[repoRange]).replacingOccurrences(of: ".git", with: "")
+            return "\(owner)/\(repo)"
+        }
+
+        return nil
+    }
+
     private static func runGit(arguments: [String], allowFailure: Bool, timeout: TimeInterval = 8) throws -> String {
+        try runTool(
+            executable: "/usr/bin/git",
+            arguments: arguments,
+            allowFailure: allowFailure,
+            timeout: timeout
+        )
+    }
+
+    private static func runTool(
+        executable: String,
+        arguments: [String],
+        allowFailure: Bool,
+        timeout: TimeInterval
+    ) throws -> String {
         let process = Process()
         let output = Pipe()
         let error = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        process.environment = toolEnvironment()
         process.standardOutput = output
         process.standardError = error
 
@@ -200,7 +312,7 @@ enum LocalGitRepositoryService {
         if process.isRunning {
             process.terminate()
             process.waitUntilExit()
-            throw LocalGitRepositoryError.commandFailed("Git command timed out.")
+            throw LocalGitRepositoryError.commandFailed("Command timed out.")
         }
 
         let outputData = output.fileHandleForReading.readDataToEndOfFile()
@@ -210,10 +322,21 @@ enum LocalGitRepositoryService {
         if process.terminationStatus != 0, !allowFailure {
             let message = String(data: errorData, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw LocalGitRepositoryError.commandFailed(message ?? "Unable to inspect git repository.")
+            throw LocalGitRepositoryError.commandFailed(message ?? "Unable to run command.")
         }
 
         return text
+    }
+
+    private static func toolEnvironment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        let defaultPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        if let currentPath = environment["PATH"], !currentPath.isEmpty {
+            environment["PATH"] = "\(defaultPath):\(currentPath)"
+        } else {
+            environment["PATH"] = defaultPath
+        }
+        return environment
     }
 }
 
