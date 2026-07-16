@@ -36,6 +36,11 @@ struct MatterSnapshot: Sendable {
     let createdAt: String
     let updatedAt: String
     let rawPayloadJson: String?
+    let projectId: String?
+    let issueKind: String?
+    let externalId: String?
+    let externalUrl: String?
+    let externalState: String?
 }
 
 struct ProjectSnapshot: Sendable {
@@ -60,6 +65,7 @@ struct LocalRepoSnapshot: Sendable {
     let commitsLast30Days: Int
     let hasUncommittedChanges: Bool
     let state: String
+    let openIssueCount: Int
 }
 
 struct MatterLogSnapshot: Sendable {

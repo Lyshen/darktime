@@ -361,6 +361,7 @@ private struct LocalRepoProjectRow: View {
     @State private var isRowHovering = false
     @State private var isTitleHovering = false
     @State private var isEditing = false
+    @State private var isCreatingIssue = false
     @State private var isConfirmingRemoval = false
 
     var body: some View {
@@ -396,6 +397,16 @@ private struct LocalRepoProjectRow: View {
                             .lineLimit(1)
                     }
 
+                    if repo.openIssueCount > 0 {
+                        Text("\(repo.openIssueCount) issues")
+                            .font(.system(size: 11, weight: .regular, design: .default))
+                            .foregroundStyle(DTColor.dimmed)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.black.opacity(0.035))
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                    }
+
                     Spacer(minLength: 8)
                 }
 
@@ -416,6 +427,9 @@ private struct LocalRepoProjectRow: View {
                         .opacity(isRowHovering ? 0 : 1)
 
                         HStack(spacing: 2) {
+                            AttentionRowActionButton("Issue") {
+                                isCreatingIssue = true
+                            }
                             AttentionRowActionButton("Edit") {
                                 isEditing = true
                             }
@@ -441,6 +455,9 @@ private struct LocalRepoProjectRow: View {
         }
         .sheet(isPresented: $isEditing) {
             ProjectEditSheet(model: model, project: repo.project)
+        }
+        .sheet(isPresented: $isCreatingIssue) {
+            ProjectIssueCreateSheet(model: model, project: repo.project)
         }
         .alert("Remove project?", isPresented: $isConfirmingRemoval) {
             Button("Remove", role: .destructive) {
@@ -487,6 +504,72 @@ private struct LocalRepoProjectRow: View {
             return "\(repo.commitsLast30Days) in 30d"
         default:
             return "0 in 30d"
+        }
+    }
+}
+
+private struct ProjectIssueCreateSheet: View {
+    @ObservedObject var model: DashboardModel
+    let project: ProjectSnapshot
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("New Issue")
+                    .font(.system(size: 15, weight: .semibold, design: .default))
+                    .foregroundStyle(DTColor.text)
+                Text(project.title)
+                    .font(.system(size: 11, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.dimmed)
+                    .lineLimit(1)
+            }
+
+            TextEditor(text: $text)
+                .font(.system(size: 13, weight: .regular, design: .default))
+                .frame(height: 98)
+                .padding(6)
+                .background(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                )
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 11, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+                Button("Cancel") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Create") {
+                    create()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 420)
+        .background(DTColor.workspace)
+    }
+
+    private func create() {
+        let ok = model.createProjectIssue(project, text: text)
+        if ok {
+            dismiss()
+        } else {
+            errorMessage = model.storageError
         }
     }
 }
@@ -645,6 +728,7 @@ private struct IssueRow: View {
     let matter: MatterSnapshot
     @State private var isHovering = false
     @State private var isEditing = false
+    @State private var isAttaching = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
@@ -656,10 +740,26 @@ private struct IssueRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 7))
 
             VStack(alignment: .leading, spacing: 7) {
-                Text(matter.text)
-                    .font(.system(size: 15, weight: .regular, design: .default))
-                    .foregroundStyle(DTColor.text)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text(matter.text)
+                        .font(.system(size: 15, weight: .regular, design: .default))
+                        .foregroundStyle(DTColor.text)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let projectTitle = model.projectTitle(for: matter) {
+                        Text(projectTitle)
+                            .font(.system(size: 12, weight: .regular, design: .default))
+                            .foregroundStyle(DTColor.text.opacity(0.5))
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
+                }
+
+                HStack {
+                    IssueKindText(kind: matter.issueKind)
+                    Spacer()
+                }
 
                 HStack {
                     Spacer()
@@ -674,6 +774,15 @@ private struct IssueRow: View {
                         HStack(spacing: 2) {
                             AttentionRowActionButton("Edit") {
                                 isEditing = true
+                            }
+                            if matter.projectId == nil {
+                                AttentionRowActionButton("Attach") {
+                                    isAttaching = true
+                                }
+                            } else {
+                                AttentionRowActionButton("Detach") {
+                                    model.detachIssue(matter)
+                                }
                             }
                             AttentionRowActionButton("Make Project") {
                                 model.linkIssueToLocalRepoProject(matter)
@@ -701,6 +810,9 @@ private struct IssueRow: View {
         .sheet(isPresented: $isEditing) {
             IssueEditSheet(model: model, issue: matter)
         }
+        .sheet(isPresented: $isAttaching) {
+            IssueProjectAttachSheet(model: model, issue: matter)
+        }
     }
 
     private var issueState: String {
@@ -711,6 +823,104 @@ private struct IssueRow: View {
         issueState == "stale" ? DTColor.dimmed : DTColor.amber
     }
 
+}
+
+private struct IssueKindText: View {
+    let kind: String?
+
+    var body: some View {
+        Text(displayKind)
+            .font(.system(size: 11, weight: .regular, design: .default))
+            .foregroundStyle(DTColor.dimmed)
+    }
+
+    private var displayKind: String {
+        switch kind {
+        case "github_pr":
+            return "github pr"
+        case "github_issue":
+            return "github issue"
+        default:
+            return "manual"
+        }
+    }
+}
+
+private struct IssueProjectAttachSheet: View {
+    @ObservedObject var model: DashboardModel
+    let issue: MatterSnapshot
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedProjectId: String?
+    @State private var errorMessage: String?
+
+    init(model: DashboardModel, issue: MatterSnapshot) {
+        self.model = model
+        self.issue = issue
+        _selectedProjectId = State(initialValue: model.projects.first?.id)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Attach Issue")
+                    .font(.system(size: 15, weight: .semibold, design: .default))
+                    .foregroundStyle(DTColor.text)
+                Text(issue.text)
+                    .font(.system(size: 11, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.dimmed)
+                    .lineLimit(2)
+            }
+
+            Picker("Project", selection: $selectedProjectId) {
+                ForEach(model.projects, id: \.id) { project in
+                    Text(project.title).tag(Optional(project.id))
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 11, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+                Button("Cancel") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Attach") {
+                    attach()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(selectedProjectId == nil)
+            }
+        }
+        .padding(22)
+        .frame(width: 420)
+        .background(DTColor.workspace)
+    }
+
+    private func attach() {
+        guard
+            let selectedProjectId,
+            let project = model.projects.first(where: { $0.id == selectedProjectId })
+        else {
+            return
+        }
+
+        let ok = model.attachIssue(issue, to: project)
+        if ok {
+            dismiss()
+        } else {
+            errorMessage = model.storageError
+        }
+    }
 }
 
 private struct IssueEditSheet: View {

@@ -107,7 +107,12 @@ enum LocalDatabase {
               source TEXT NOT NULL,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL,
-              raw_payload_json TEXT
+              raw_payload_json TEXT,
+              project_id TEXT,
+              issue_kind TEXT,
+              external_id TEXT,
+              external_url TEXT,
+              external_state TEXT
             );
             CREATE TABLE IF NOT EXISTS matter_logs (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,6 +160,7 @@ enum LocalDatabase {
             db: db
         )
         try migrateProjects(db: db)
+        try migrateMatterIssueFields(db: db)
         try migrateMatterStatuses(db: db)
     }
 
@@ -249,7 +255,108 @@ enum LocalDatabase {
             source: source,
             createdAt: now,
             updatedAt: now,
-            rawPayloadJson: rawPayloadJson
+            rawPayloadJson: rawPayloadJson,
+            projectId: nil,
+            issueKind: nil,
+            externalId: nil,
+            externalUrl: nil,
+            externalState: nil
+        )
+    }
+
+    static func createProjectIssue(
+        projectId: String,
+        text: String,
+        issueKind: String = "manual",
+        externalId: String? = nil,
+        externalUrl: String? = nil,
+        externalState: String? = nil
+    ) throws -> MatterSnapshot {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedKind = normalizedIssueKind(issueKind)
+        guard !trimmed.isEmpty else {
+            throw StorageError.invalidInput("Issue text cannot be empty.")
+        }
+
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        guard try project(id: projectId, db: db) != nil else {
+            throw StorageError.notFound("Project \(projectId) was not found.")
+        }
+
+        let id = UUID().uuidString
+        let now = isoNow()
+        try exec("BEGIN TRANSACTION;", db: db)
+        do {
+            try executePrepared(
+                """
+                INSERT INTO matters (
+                  id,
+                  text,
+                  status,
+                  source,
+                  created_at,
+                  updated_at,
+                  raw_payload_json,
+                  project_id,
+                  issue_kind,
+                  external_id,
+                  external_url,
+                  external_state
+                ) VALUES (?, ?, 'issue', 'manual', ?, ?, NULL, ?, ?, ?, ?, ?);
+                """,
+                values: [
+                    id,
+                    trimmed,
+                    now,
+                    now,
+                    projectId,
+                    normalizedKind,
+                    normalizedOptional(externalId?.trimmingCharacters(in: .whitespacesAndNewlines)),
+                    normalizedOptional(externalUrl?.trimmingCharacters(in: .whitespacesAndNewlines)),
+                    normalizedOptional(externalState?.trimmingCharacters(in: .whitespacesAndNewlines)) ?? "open"
+                ],
+                db: db
+            )
+            try executePrepared(
+                """
+                INSERT INTO matter_logs (
+                  matter_id,
+                  created_at,
+                  action,
+                  to_status,
+                  summary,
+                  metadata_json
+                ) VALUES (?, ?, 'created_project_issue', 'issue', ?, ?);
+                """,
+                values: [
+                    id,
+                    now,
+                    "Created project issue",
+                    "{\"projectId\":\"\(projectId)\"}"
+                ],
+                db: db
+            )
+            try exec("COMMIT;", db: db)
+        } catch {
+            try? exec("ROLLBACK;", db: db)
+            throw error
+        }
+
+        return MatterSnapshot(
+            id: id,
+            text: trimmed,
+            status: "issue",
+            source: "manual",
+            createdAt: now,
+            updatedAt: now,
+            rawPayloadJson: nil,
+            projectId: projectId,
+            issueKind: normalizedKind,
+            externalId: normalizedOptional(externalId?.trimmingCharacters(in: .whitespacesAndNewlines)),
+            externalUrl: normalizedOptional(externalUrl?.trimmingCharacters(in: .whitespacesAndNewlines)),
+            externalState: normalizedOptional(externalState?.trimmingCharacters(in: .whitespacesAndNewlines)) ?? "open"
         )
     }
 
@@ -387,6 +494,15 @@ enum LocalDatabase {
             )
             try executePrepared(
                 """
+                UPDATE matters
+                SET project_id = NULL, updated_at = ?
+                WHERE project_id = ?;
+                """,
+                values: [isoNow(), id],
+                db: db
+            )
+            try executePrepared(
+                """
                 DELETE FROM roots
                 WHERE id = ?;
                 """,
@@ -507,7 +623,12 @@ enum LocalDatabase {
             source: current.source,
             createdAt: current.createdAt,
             updatedAt: now,
-            rawPayloadJson: current.rawPayloadJson
+            rawPayloadJson: current.rawPayloadJson,
+            projectId: current.projectId,
+            issueKind: current.issueKind,
+            externalId: current.externalId,
+            externalUrl: current.externalUrl,
+            externalState: current.externalState
         )
     }
 
@@ -563,7 +684,81 @@ enum LocalDatabase {
             source: current.source,
             createdAt: current.createdAt,
             updatedAt: now,
-            rawPayloadJson: current.rawPayloadJson
+            rawPayloadJson: current.rawPayloadJson,
+            projectId: current.projectId,
+            issueKind: current.issueKind,
+            externalId: current.externalId,
+            externalUrl: current.externalUrl,
+            externalState: current.externalState
+        )
+    }
+
+    static func updateIssueProject(id: String, projectId: String?, issueKind: String? = nil) throws -> MatterSnapshot {
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        guard let current = try matter(id: id, db: db) else {
+            throw StorageError.notFound("Matter \(id) was not found.")
+        }
+        guard current.status == "issue" else {
+            throw StorageError.invalidInput("Only issues can be attached to projects.")
+        }
+        if let projectId, try project(id: projectId, db: db) == nil {
+            throw StorageError.notFound("Project \(projectId) was not found.")
+        }
+
+        let normalizedKind = normalizedIssueKind(issueKind ?? current.issueKind ?? "manual")
+        let now = isoNow()
+        try exec("BEGIN TRANSACTION;", db: db)
+        do {
+            try executePrepared(
+                """
+                UPDATE matters
+                SET project_id = ?, issue_kind = ?, updated_at = ?
+                WHERE id = ?;
+                """,
+                values: [projectId, normalizedKind, now, id],
+                db: db
+            )
+            try executePrepared(
+                """
+                INSERT INTO matter_logs (
+                  matter_id,
+                  created_at,
+                  action,
+                  from_status,
+                  to_status,
+                  summary,
+                  metadata_json
+                ) VALUES (?, ?, 'project_changed', 'issue', 'issue', ?, ?);
+                """,
+                values: [
+                    id,
+                    now,
+                    projectId == nil ? "Detached issue from project" : "Attached issue to project",
+                    projectId.map { "{\"projectId\":\"\($0)\"}" }
+                ],
+                db: db
+            )
+            try exec("COMMIT;", db: db)
+        } catch {
+            try? exec("ROLLBACK;", db: db)
+            throw error
+        }
+
+        return MatterSnapshot(
+            id: current.id,
+            text: current.text,
+            status: current.status,
+            source: current.source,
+            createdAt: current.createdAt,
+            updatedAt: now,
+            rawPayloadJson: current.rawPayloadJson,
+            projectId: projectId,
+            issueKind: normalizedKind,
+            externalId: current.externalId,
+            externalUrl: current.externalUrl,
+            externalState: current.externalState
         )
     }
 
@@ -618,7 +813,8 @@ enum LocalDatabase {
         let values: [String?]
         if let status {
             sql = """
-                SELECT id, text, status, source, created_at, updated_at, raw_payload_json
+                SELECT id, text, status, source, created_at, updated_at, raw_payload_json,
+                       project_id, issue_kind, external_id, external_url, external_state
                 FROM matters
                 WHERE status = ?
                 ORDER BY updated_at DESC
@@ -627,7 +823,8 @@ enum LocalDatabase {
             values = [status]
         } else {
             sql = """
-                SELECT id, text, status, source, created_at, updated_at, raw_payload_json
+                SELECT id, text, status, source, created_at, updated_at, raw_payload_json,
+                       project_id, issue_kind, external_id, external_url, external_state
                 FROM matters
                 ORDER BY updated_at DESC
                 LIMIT \(max(1, limit));
@@ -802,7 +999,8 @@ enum LocalDatabase {
     private static func matter(id: String, db: OpaquePointer) throws -> MatterSnapshot? {
         let rows = try queryPrepared(
             """
-            SELECT id, text, status, source, created_at, updated_at, raw_payload_json
+            SELECT id, text, status, source, created_at, updated_at, raw_payload_json,
+                   project_id, issue_kind, external_id, external_url, external_state
             FROM matters
             WHERE id = ?
             LIMIT 1;
@@ -964,6 +1162,31 @@ enum LocalDatabase {
         }
     }
 
+    private static func migrateMatterIssueFields(db: OpaquePointer) throws {
+        try addColumnIfMissing("ALTER TABLE matters ADD COLUMN project_id TEXT;", db: db)
+        try addColumnIfMissing("ALTER TABLE matters ADD COLUMN issue_kind TEXT;", db: db)
+        try addColumnIfMissing("ALTER TABLE matters ADD COLUMN external_id TEXT;", db: db)
+        try addColumnIfMissing("ALTER TABLE matters ADD COLUMN external_url TEXT;", db: db)
+        try addColumnIfMissing("ALTER TABLE matters ADD COLUMN external_state TEXT;", db: db)
+        try exec(
+            """
+            CREATE INDEX IF NOT EXISTS idx_matters_project_status ON matters(project_id, status, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_matters_external_issue ON matters(issue_kind, external_id);
+            """,
+            db: db
+        )
+    }
+
+    private static func addColumnIfMissing(_ sql: String, db: OpaquePointer) throws {
+        do {
+            try exec(sql, db: db)
+        } catch StorageError.sqlite(let message) where message.localizedCaseInsensitiveContains("duplicate column") {
+            return
+        } catch {
+            throw error
+        }
+    }
+
     private static func migrateMatterStatuses(db: OpaquePointer) throws {
         try exec(
             """
@@ -1045,7 +1268,12 @@ enum LocalDatabase {
             source: columnText(statement, 3) ?? "manual",
             createdAt: columnText(statement, 4) ?? "",
             updatedAt: columnText(statement, 5) ?? "",
-            rawPayloadJson: columnText(statement, 6)
+            rawPayloadJson: columnText(statement, 6),
+            projectId: columnText(statement, 7),
+            issueKind: columnText(statement, 8),
+            externalId: columnText(statement, 9),
+            externalUrl: columnText(statement, 10),
+            externalState: columnText(statement, 11)
         )
     }
 
@@ -1080,6 +1308,14 @@ enum LocalDatabase {
             return nil
         }
         return value
+    }
+
+    private static func normalizedIssueKind(_ value: String) -> String {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else {
+            return "manual"
+        }
+        return normalized
     }
 
     private static func columnText(_ statement: OpaquePointer, _ index: Int32) -> String? {

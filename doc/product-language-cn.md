@@ -32,7 +32,7 @@ Capture
                   -> Action
 ```
 
-当前 MVP 还没有实现 Project 下的 Issue 管理，但产品语言按这个方向收敛。
+当前 MVP 已支持手动 Project Issue。GitHub Issue / PR 同步会写入同一套 Issue 模型。
 
 ## 关键解释
 
@@ -70,6 +70,7 @@ empty    -> 还没有 Action
 
 - Capture / Inbox / Clear。
 - Issue 列表、编辑、丢弃、转 Project。
+- Project 下的手动 Issue。
 - 本地 git repo Project。
 - commit 自动导入为 Action。
 - Attention Items 和 Timeline。
@@ -77,7 +78,6 @@ empty    -> 还没有 Action
 暂不进入：
 
 - Project detail。
-- Project 下的 Issue 管理。
 - 手动 Action。
 - Today planning。
 - AI observer / coach。
