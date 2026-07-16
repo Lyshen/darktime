@@ -57,6 +57,8 @@ struct DarktimeDashboard: View {
         switch model.selectedSection {
         case .capture:
             CaptureWorkspace(model: model)
+        case .today:
+            DailyFocusWorkspace(model: model)
         case .inbox:
             InboxWorkspace(model: model)
         case .attention:

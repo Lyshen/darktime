@@ -5,6 +5,8 @@ import Foundation
 @MainActor
 final class DashboardModel: ObservableObject {
     private static let quickCaptureDraftKey = "darktime.quickCaptureDraft"
+    private static let dailyFocusPrefix = "darktime.dailyFocusIssueIDs."
+    private static let dailyReflectionPrefix = "darktime.dailyReflection."
 
     @Published var selectedSection: WorkspaceSection = .capture
     @Published var authorizationStatus = "checking"
@@ -25,6 +27,12 @@ final class DashboardModel: ObservableObject {
     @Published var actionSyncLastFinishedAt: String?
     @Published var actionSyncLastChangeCount = 0
     @Published var copiedCommand = false
+    @Published var dailyFocusIssueIDs = Set<String>()
+    @Published var dailyReflection: String {
+        didSet {
+            UserDefaults.standard.set(dailyReflection, forKey: Self.dailyReflectionPrefix + dailyDateKey)
+        }
+    }
     @Published var quickCaptureDraft: String {
         didSet {
             UserDefaults.standard.set(quickCaptureDraft, forKey: Self.quickCaptureDraftKey)
@@ -35,9 +43,13 @@ final class DashboardModel: ObservableObject {
     private var lastLocalRepoActionSyncAt: Date?
     private var lastLocalRepoActionSyncProjectIDs = Set<String>()
     private var localRepoActionSyncTask: Task<Void, Never>?
+    private var dailyDateKey: String
 
     init() {
+        dailyDateKey = Self.currentDailyDateKey()
         quickCaptureDraft = UserDefaults.standard.string(forKey: Self.quickCaptureDraftKey) ?? ""
+        dailyFocusIssueIDs = Set(UserDefaults.standard.stringArray(forKey: Self.dailyFocusPrefix + dailyDateKey) ?? [])
+        dailyReflection = UserDefaults.standard.string(forKey: Self.dailyReflectionPrefix + dailyDateKey) ?? ""
     }
 
     var dbPath: String {
@@ -92,7 +104,21 @@ final class DashboardModel: ObservableObject {
         matters.filter { $0.status == "dropped" }
     }
 
+    var todayFocusIssues: [MatterSnapshot] {
+        issueMatters.filter { dailyFocusIssueIDs.contains($0.id) }
+    }
+
+    var todayActions: [ActionSnapshot] {
+        actions.filter { action in
+            guard let date = parseISODate(action.happenedAt) else {
+                return false
+            }
+            return Calendar.current.isDateInToday(date)
+        }
+    }
+
     func refresh() {
+        refreshDailyStateIfNeeded()
         refreshStorage()
         refreshCalendar()
     }
@@ -311,7 +337,29 @@ final class DashboardModel: ObservableObject {
         guard let projectId = issue.projectId else {
             return nil
         }
+        return projectTitle(projectId: projectId)
+    }
+
+    func projectTitle(projectId: String) -> String? {
         return projects.first { $0.id == projectId }?.title
+    }
+
+    func isDailyFocus(_ issue: MatterSnapshot) -> Bool {
+        dailyFocusIssueIDs.contains(issue.id)
+    }
+
+    func toggleDailyFocus(_ issue: MatterSnapshot) {
+        if dailyFocusIssueIDs.contains(issue.id) {
+            dailyFocusIssueIDs.remove(issue.id)
+        } else {
+            dailyFocusIssueIDs.insert(issue.id)
+        }
+        saveDailyFocus()
+    }
+
+    func clearDailyFocus() {
+        dailyFocusIssueIDs.removeAll()
+        saveDailyFocus()
     }
 
     private func chooseLocalRepoPath(message: String) -> String? {
@@ -389,6 +437,26 @@ final class DashboardModel: ObservableObject {
             storageReady = false
             storageError = String(describing: error)
         }
+    }
+
+    private static func currentDailyDateKey() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+
+    private func refreshDailyStateIfNeeded() {
+        let currentKey = Self.currentDailyDateKey()
+        guard currentKey != dailyDateKey else {
+            return
+        }
+        dailyDateKey = currentKey
+        dailyFocusIssueIDs = Set(UserDefaults.standard.stringArray(forKey: Self.dailyFocusPrefix + dailyDateKey) ?? [])
+        dailyReflection = UserDefaults.standard.string(forKey: Self.dailyReflectionPrefix + dailyDateKey) ?? ""
+    }
+
+    private func saveDailyFocus() {
+        UserDefaults.standard.set(Array(dailyFocusIssueIDs), forKey: Self.dailyFocusPrefix + dailyDateKey)
     }
 
     private func refreshLocalRepoSnapshots(from actions: [ActionSnapshot]) {
