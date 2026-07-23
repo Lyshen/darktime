@@ -1,24 +1,16 @@
 # Darktime
 
-Darktime is a local time layer for giving coding agents controlled access to the user's calendar.
+Darktime is a local-first macOS workspace for capturing attention, clearing open loops, and seeing which projects are actually receiving action.
 
 Current MVP:
 
-- Apple Calendar read/write through a native Swift EventKit integration.
-- Local MCP server for Codex, Claude Code, and other MCP clients.
-- Dashboard with source status, stdio MCP health, recent sessions, and recent actions.
-- SQLite-backed local activity store.
-- Write operations require explicit `confirm: true` at the MCP layer.
-
-## Local Tooling Check
-
-This machine is ready for the MVP:
-
-- Xcode: `16.1`
-- Swift: `6.0.2`
-- Node.js: `22.14.0`
-- npm: `10.9.2`
-- Local tools available: `swift`, `xcodebuild`, `node`, `npm`, `codesign`, `plutil`, `osascript`
+- Capture: in-app text capture and global Quick Capture.
+- Inbox and Clear: lightweight triage from raw Matter into Issue, Done, or Dropped.
+- Attention: local repo Projects, project Issues, and git commit Actions.
+- Today: a daily focus view for selected Issues and today's Actions.
+- Shortcut Capture: iCloud Drive folder import for iPhone, Mac, and Apple Watch Shortcuts.
+- Apple Calendar and local MCP tools as secondary integrations.
+- SQLite local storage. User data stays on the machine unless the user chooses iCloud Drive for Shortcut Capture.
 
 ## Build
 
@@ -31,8 +23,6 @@ This builds:
 
 - `.build/release/darktime`
 - `.build/Darktime.app`
-- `assets/darktime-logo.png`
-- `assets/DarktimeAppIcon.icns`
 - `dist/mac/Darktime.app`
 - `dist/mac/Darktime-mac.zip`
 - `dist/mcp-server.js`
@@ -47,50 +37,17 @@ This creates:
 
 - `dist/mac/Darktime-mac.dmg`
 
-## GitHub Release Build
-
-The repository includes a GitHub Actions workflow at `.github/workflows/build-mac.yml`.
-
-- Push to `main` or `mvp`: build the macOS app and upload `.app`, `.zip`, and `.dmg` as workflow artifacts.
-- Run manually from Actions: build the same downloadable artifacts.
-- Push a version tag like `v0.1.0`: build the app, create/update the GitHub Release, and attach the `.dmg` and `.zip`.
-
-Release command:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
 ## Install Test Build
-
-Build the app artifact:
 
 ```bash
 npm run build:all
-```
-
-Install it for local testing:
-
-```bash
 cp -R "dist/mac/Darktime.app" /Applications/
 open "/Applications/Darktime.app"
 ```
 
-Opening the app with no arguments shows the MVP dashboard.
+## Storage
 
-The MVP app now opens a large Darktime dashboard with:
-
-- Calendar permission status and a grant-access button.
-- Visible Apple calendars with writable/read-only and local/sync hints.
-- A preferred write-target hint so local-only calendars are obvious.
-- MCP mode, storage path, recent sessions, recent activity, and a copy button for the local MCP command.
-- Automatic dashboard refresh every two seconds, so MCP reads and writes appear without restarting the app.
-- Activity rows that show human-readable event details when request metadata is available.
-
-## Dashboard Storage
-
-Darktime stores local MCP sessions and action logs in SQLite:
+Darktime stores local data in SQLite:
 
 ```text
 ~/Library/Application Support/Darktime/darktime.sqlite3
@@ -102,11 +59,65 @@ For development, override the path:
 DARKTIME_DB=/tmp/darktime.sqlite3 npm run mcp
 ```
 
-The current MCP server uses stdio. There is no localhost port in this MVP; Codex or Claude Code launches the MCP process directly.
+Shortcut Capture imports from the user's iCloud Drive. The primary location is the Shortcuts app container:
 
-## Apple Calendar Permission
+```text
+~/Library/Mobile Documents/iCloud~is~workflow~my~workflows/Documents/Darktime/Inbox
+```
 
-Calendar permission is tied to the signed `.app` identity, not just the raw command-line binary. Use the app bundle for permission and MCP access.
+Darktime also watches this compatibility location:
+
+```text
+~/Library/Mobile Documents/com~apple~CloudDocs/Darktime/Inbox
+```
+
+Files imported by the Mac app are moved to `Imported`; failed imports go to `Failed`.
+
+## MCP Server
+
+Run the local MCP server:
+
+```bash
+npm run build
+npm run mcp
+```
+
+MCP clients can launch:
+
+```bash
+node /Users/lyshen/Desktop/project/darktime/dist/mcp-server.js
+```
+
+The MCP server looks for the signed app in this order:
+
+- `DARKTIME_APP`
+- `dist/mac/Darktime.app`
+- `.build/Darktime.app`
+- `~/Applications/Darktime.app`
+- `/Applications/Darktime.app`
+
+Available Matter tools:
+
+- `matter_create`
+- `matter_list`
+- `matter_update_status`
+
+Available Apple Calendar tools:
+
+- `calendar_authorization_status`
+- `calendar_request_access`
+- `calendar_list_calendars`
+- `calendar_list_events`
+- `calendar_find_free_slots`
+- `calendar_create_event`
+- `calendar_update_event`
+- `calendar_delete_event`
+
+Calendar write tools require `confirm: true`.
+
+## Direct Calendar Commands
+
+Calendar permission is tied to the signed `.app` identity. Use the app bundle for permission and MCP access.
 
 Check current permission:
 
@@ -122,18 +133,6 @@ Request permission:
 rm -f /tmp/darktime-request.json
 open -W .build/Darktime.app --args request-access --output /tmp/darktime-request.json
 cat /tmp/darktime-request.json
-```
-
-macOS should show a Calendar permission prompt. Grant full calendar access.
-
-## Direct App Usage
-
-List calendars:
-
-```bash
-rm -f /tmp/darktime-calendars.json
-open -W .build/Darktime.app --args list-calendars --output /tmp/darktime-calendars.json
-cat /tmp/darktime-calendars.json
 ```
 
 List events:
@@ -160,46 +159,15 @@ open -W .build/Darktime.app --args create-event \
 cat /tmp/darktime-create.json
 ```
 
-## MCP Server
+## GitHub Release Build
 
-Run the local MCP server:
+The repository includes `.github/workflows/build-mac.yml`.
 
-```bash
-npm run mcp
-```
+- Push to `main`: build the macOS app and upload `.app`, `.zip`, and `.dmg` as workflow artifacts.
+- Run manually from Actions: build the same downloadable artifacts.
+- Push a version tag like `v0.1.0`: create/update the GitHub Release and attach the `.dmg` and `.zip`.
 
-MCP clients can launch:
-
-```bash
-node /Users/lyshen/Desktop/project/darktime/dist/mcp-server.js
-```
-
-The MCP server looks for the signed app in this order:
-
-- `DARKTIME_CALENDAR_APP`
-- `dist/mac/Darktime.app`
-- `.build/Darktime.app`
-- `~/Applications/Darktime.app`
-- `/Applications/Darktime.app`
-
-This keeps Apple Calendar TCC permission matched to the app identity.
-
-Available tools:
-
-- `calendar_authorization_status`
-- `calendar_request_access`
-- `calendar_list_calendars`
-- `calendar_list_events`
-- `calendar_find_free_slots`
-- `calendar_create_event`
-- `calendar_update_event`
-- `calendar_delete_event`
-
-Write tools require `confirm: true`.
-
-## Design
-
-Product language and flow are in:
+## Product Language
 
 - [Chinese](/Users/lyshen/Desktop/project/darktime/doc/product-language-cn.md)
 - [English](/Users/lyshen/Desktop/project/darktime/doc/product-language-en.md)

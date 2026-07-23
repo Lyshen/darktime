@@ -943,7 +943,7 @@ private struct IssueEditSheet: View {
                 Text("Edit Issue")
                     .font(.system(size: 15, weight: .semibold, design: .default))
                     .foregroundStyle(DTColor.text)
-                Text("Keep the wording clear enough to return to later.")
+                Text("Keep the wording clear enough to return to it.")
                     .font(.system(size: 11, weight: .regular, design: .default))
                     .foregroundStyle(DTColor.dimmed)
             }
