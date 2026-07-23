@@ -51,6 +51,18 @@ enum MatterRepository {
         try LocalDatabase.updateMatterText(id: matter.id, text: text)
     }
 
+    static func createProjectIssue(project: ProjectSnapshot, text: String) throws -> MatterSnapshot {
+        try LocalDatabase.createProjectIssue(projectId: project.id, text: text)
+    }
+
+    static func attachIssue(_ issue: MatterSnapshot, to project: ProjectSnapshot) throws -> MatterSnapshot {
+        try LocalDatabase.updateIssueProject(id: issue.id, projectId: project.id)
+    }
+
+    static func detachIssue(_ issue: MatterSnapshot) throws -> MatterSnapshot {
+        try LocalDatabase.updateIssueProject(id: issue.id, projectId: nil)
+    }
+
     static func createLocalRepoProject(title: String, localPath: String, intention: String? = nil) throws -> ProjectSnapshot {
         try LocalDatabase.createLocalRepoProject(title: title, localPath: localPath, intention: intention)
     }

@@ -32,7 +32,7 @@ Capture
                   -> Action
 ```
 
-The current MVP does not yet implement Project-owned Issues, but the product language points in that direction.
+The current MVP supports manual Project Issues. GitHub Issues and PRs will use the same Issue model later.
 
 ## Key Meanings
 
@@ -70,6 +70,7 @@ In:
 
 - Capture / Inbox / Clear.
 - Issue list, edit, drop, and make Project.
+- Manual Project Issues.
 - Local git repo Projects.
 - Commits imported as Actions.
 - Attention Items and Timeline.
@@ -77,7 +78,6 @@ In:
 Out:
 
 - Project detail.
-- Project-owned Issue management.
 - Manual Action.
 - Today planning.
 - AI observer / coach.

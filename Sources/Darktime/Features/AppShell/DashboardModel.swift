@@ -80,6 +80,10 @@ final class DashboardModel: ObservableObject {
         matters.filter { $0.status == "issue" }
     }
 
+    var projectIssueMatters: [MatterSnapshot] {
+        issueMatters.filter { $0.projectId != nil && $0.externalState?.lowercased() != "closed" }
+    }
+
     var attentionItemCount: Int {
         localRepoSnapshots.count + issueMatters.count
     }
@@ -214,6 +218,46 @@ final class DashboardModel: ObservableObject {
     }
 
     @discardableResult
+    func createProjectIssue(_ project: ProjectSnapshot, text: String) -> Bool {
+        do {
+            _ = try MatterRepository.createProjectIssue(project: project, text: text)
+            selectedSection = .attention
+            refresh()
+            return true
+        } catch {
+            storageReady = false
+            storageError = String(describing: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func attachIssue(_ issue: MatterSnapshot, to project: ProjectSnapshot) -> Bool {
+        do {
+            _ = try MatterRepository.attachIssue(issue, to: project)
+            refresh()
+            return true
+        } catch {
+            storageReady = false
+            storageError = String(describing: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func detachIssue(_ issue: MatterSnapshot) -> Bool {
+        do {
+            _ = try MatterRepository.detachIssue(issue)
+            refresh()
+            return true
+        } catch {
+            storageReady = false
+            storageError = String(describing: error)
+            return false
+        }
+    }
+
+    @discardableResult
     func updateIssue(_ issue: MatterSnapshot, text: String) -> Bool {
         do {
             _ = try MatterRepository.updateMatterText(issue, text: text)
@@ -261,6 +305,13 @@ final class DashboardModel: ObservableObject {
 
     func openLocalRepo(_ repo: LocalRepoSnapshot) {
         NSWorkspace.shared.open(URL(fileURLWithPath: repo.rootPath, isDirectory: true))
+    }
+
+    func projectTitle(for issue: MatterSnapshot) -> String? {
+        guard let projectId = issue.projectId else {
+            return nil
+        }
+        return projects.first { $0.id == projectId }?.title
     }
 
     private func chooseLocalRepoPath(message: String) -> String? {
@@ -343,15 +394,20 @@ final class DashboardModel: ObservableObject {
     private func refreshLocalRepoSnapshots(from actions: [ActionSnapshot]) {
         let repoProjects = projects.filter { $0.kind == "local_repo" }
         let actionsByProject = Dictionary(grouping: actions.filter { $0.source == "local_git" && $0.kind == "commit" }, by: \.projectId)
+        let issuesByProject = Dictionary(grouping: projectIssueMatters) { $0.projectId ?? "" }
         localRepoSnapshots = repoProjects.compactMap { project in
-            cachedLocalRepoSnapshot(project: project, actions: actionsByProject[project.id] ?? [])
+            cachedLocalRepoSnapshot(
+                project: project,
+                actions: actionsByProject[project.id] ?? [],
+                openIssueCount: issuesByProject[project.id]?.count ?? 0
+            )
         }
             .sorted { left, right in
                 localRepoSortKey(left) < localRepoSortKey(right)
             }
     }
 
-    private func cachedLocalRepoSnapshot(project: ProjectSnapshot, actions: [ActionSnapshot]) -> LocalRepoSnapshot? {
+    private func cachedLocalRepoSnapshot(project: ProjectSnapshot, actions: [ActionSnapshot], openIssueCount: Int) -> LocalRepoSnapshot? {
         guard let localPath = project.localPath else {
             return nil
         }
@@ -370,7 +426,8 @@ final class DashboardModel: ObservableObject {
             commitsLast7Days: actionCount(in: sortedActions, days: 7),
             commitsLast30Days: actionCount(in: sortedActions, days: 30),
             hasUncommittedChanges: false,
-            state: localRepoState(lastOutputAt: latestAction?.happenedAt)
+            state: localRepoState(lastOutputAt: latestAction?.happenedAt),
+            openIssueCount: openIssueCount
         )
     }
 

@@ -45,7 +45,8 @@ enum LocalGitRepositoryService {
                 commitsLast7Days: commitCount(at: resolved.rootPath, since: "7 days ago"),
                 commitsLast30Days: commitCount(at: resolved.rootPath, since: "30 days ago"),
                 hasUncommittedChanges: hasUncommittedChanges,
-                state: state(lastCommitAt: latestCommit?.date)
+                state: state(lastCommitAt: latestCommit?.date),
+                openIssueCount: 0
             )
         } catch {
             return LocalRepoSnapshot(
@@ -59,7 +60,8 @@ enum LocalGitRepositoryService {
                 commitsLast7Days: 0,
                 commitsLast30Days: 0,
                 hasUncommittedChanges: false,
-                state: "unavailable"
+                state: "unavailable",
+                openIssueCount: 0
             )
         }
     }
