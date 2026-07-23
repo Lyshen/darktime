@@ -40,14 +40,14 @@ type ToolResult = {
 };
 
 type ActionStatus = "started" | "success" | "error" | "blocked";
-type MatterStatus = "inbox" | "today" | "later" | "done" | "dropped" | "rootbox";
+type MatterStatus = "inbox" | "issue" | "done" | "dropped";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(moduleDir, "..");
 const sessionId = randomUUID();
 const clientName = process.env.DARKTIME_MCP_CLIENT_NAME || "MCP stdio client";
 const clientVersion = process.env.DARKTIME_MCP_CLIENT_VERSION || null;
-const matterStatuses = ["inbox", "today", "later", "done", "dropped", "rootbox"] as const;
+const matterStatuses = ["inbox", "issue", "done", "dropped"] as const;
 
 const server = new McpServer({
   name: "darktime",
@@ -126,7 +126,7 @@ server.registerTool(
   "matter_update_status",
   {
     title: "Update Matter Status",
-    description: "Move a Darktime Matter between Inbox, Clear outcomes, and Rootbox.",
+    description: "Move a Darktime Matter between Inbox, Issue, Done, and Dropped.",
     inputSchema: {
       id: z.string().min(1),
       status: z.enum(matterStatuses)
@@ -401,7 +401,12 @@ async function initializeStorage(): Promise<void> {
         source TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        raw_payload_json TEXT
+        raw_payload_json TEXT,
+        project_id TEXT,
+        issue_kind TEXT,
+        external_id TEXT,
+        external_url TEXT,
+        external_state TEXT
       );
       CREATE TABLE IF NOT EXISTS matter_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -421,6 +426,18 @@ async function initializeStorage(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_matters_created_at ON matters(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_matter_logs_created_at ON matter_logs(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_matter_logs_matter_id ON matter_logs(matter_id);
+    `);
+    await ensureColumn("matters", "project_id", "TEXT");
+    await ensureColumn("matters", "issue_kind", "TEXT");
+    await ensureColumn("matters", "external_id", "TEXT");
+    await ensureColumn("matters", "external_url", "TEXT");
+    await ensureColumn("matters", "external_state", "TEXT");
+    await sqliteExec(`
+      CREATE INDEX IF NOT EXISTS idx_matters_project_updated ON matters(project_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_matters_external_issue ON matters(issue_kind, external_id);
+      UPDATE matters SET status = 'issue' WHERE status = 'rootbox';
+      UPDATE matter_logs SET from_status = 'issue' WHERE from_status = 'rootbox';
+      UPDATE matter_logs SET to_status = 'issue' WHERE to_status = 'rootbox';
     `);
   });
 }
@@ -489,7 +506,12 @@ async function listMatters(status: MatterStatus | undefined, limit: number): Pro
       source,
       created_at AS createdAt,
       updated_at AS updatedAt,
-      raw_payload_json AS rawPayloadJson
+      raw_payload_json AS rawPayloadJson,
+      project_id AS projectId,
+      issue_kind AS issueKind,
+      external_id AS externalId,
+      external_url AS externalUrl,
+      external_state AS externalState
     FROM matters
     ${where}
     ORDER BY updated_at DESC
@@ -506,7 +528,12 @@ async function updateMatterStatus(id: string, status: MatterStatus): Promise<Rec
       source,
       created_at AS createdAt,
       updated_at AS updatedAt,
-      raw_payload_json AS rawPayloadJson
+      raw_payload_json AS rawPayloadJson,
+      project_id AS projectId,
+      issue_kind AS issueKind,
+      external_id AS externalId,
+      external_url AS externalUrl,
+      external_state AS externalState
     FROM matters
     WHERE id = ${sqlValue(id)}
     LIMIT 1;
@@ -689,6 +716,14 @@ async function sqliteQueryJson(sql: string): Promise<unknown[]> {
   }
 }
 
+async function ensureColumn(table: string, column: string, definition: string): Promise<void> {
+  const rows = await sqliteQueryJson(`PRAGMA table_info(${table});`) as Array<Record<string, unknown>>;
+  const hasColumn = rows.some((row) => row.name === column);
+  if (!hasColumn) {
+    await sqliteExec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
+  }
+}
+
 function darktimeDbPath(): string {
   if (process.env.DARKTIME_DB) {
     return process.env.DARKTIME_DB;
@@ -851,8 +886,8 @@ async function runBridge(command: string, pairs: CliPair[] = []): Promise<unknow
 }
 
 function resolveBridgeLauncher(): BridgeLauncher {
-  const explicitAppPath = process.env.DARKTIME_CALENDAR_APP;
-  const explicitPath = process.env.DARKTIME_CALENDAR_BRIDGE;
+  const explicitAppPath = process.env.DARKTIME_APP;
+  const explicitPath = process.env.DARKTIME_BINARY;
   const appCandidates = [
     explicitAppPath,
     path.join(projectRoot, "dist", "mac", "Darktime.app"),
@@ -879,7 +914,7 @@ function resolveBridgeLauncher(): BridgeLauncher {
   const bridgePath = candidates.find((candidate) => existsSync(candidate));
   if (!bridgePath) {
     throw new Error(
-      `Could not find Darktime. Run "npm run build:app", set DARKTIME_CALENDAR_APP, or set DARKTIME_CALENDAR_BRIDGE. Checked apps: ${appCandidates.join(", ")}. Checked binaries: ${candidates.join(", ")}`
+      `Could not find Darktime. Run "npm run build:app", set DARKTIME_APP, or set DARKTIME_BINARY. Checked apps: ${appCandidates.join(", ")}. Checked binaries: ${candidates.join(", ")}`
     );
   }
 
@@ -931,7 +966,7 @@ function spawnAndCollect(command: string, args: string[], stdin?: string): Promi
 }
 
 async function runAppBundle(appPath: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> {
-  const outputPath = path.join(tmpdir(), `darktime-calendar-${process.pid}-${randomUUID()}.json`);
+  const outputPath = path.join(tmpdir(), `darktime-${process.pid}-${randomUUID()}.json`);
   const openArgs = ["-n", appPath, "--args", ...args, "--output", outputPath];
   const result = await spawnAndCollect("open", openArgs);
 

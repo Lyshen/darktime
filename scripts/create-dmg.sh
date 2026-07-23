@@ -14,8 +14,7 @@ fi
 
 rm -rf \
   "$STAGING_DIR" \
-  "$DMG_PATH" \
-  "$DIST_DIR/Darktime-Calendar-Bridge-mac.dmg"
+  "$DMG_PATH"
 mkdir -p "$STAGING_DIR"
 
 cp -R "$APP_PATH" "$STAGING_DIR/"

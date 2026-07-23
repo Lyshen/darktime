@@ -14,9 +14,7 @@ swift build -c release --package-path "$ROOT_DIR"
 rm -rf \
   "$BUILD_APP_PATH" \
   "$DIST_APP_PATH" \
-  "$ZIP_PATH" \
-  "$DIST_DIR/Darktime Calendar Bridge.app" \
-  "$DIST_DIR/Darktime-Calendar-Bridge-mac.zip"
+  "$ZIP_PATH"
 mkdir -p "$BUILD_APP_PATH/Contents/MacOS" "$BUILD_APP_PATH/Contents/Resources" "$DIST_DIR"
 
 cp "$ROOT_DIR/.build/release/darktime" "$BUILD_APP_PATH/Contents/MacOS/darktime"

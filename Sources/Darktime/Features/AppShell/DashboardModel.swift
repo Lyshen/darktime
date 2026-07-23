@@ -177,7 +177,7 @@ final class DashboardModel: ObservableObject {
             if navigate {
                 if status == "issue" {
                     selectedSection = .attention
-                } else if status == "dropped" || status == "done" || status == "later" || status == "inbox" {
+                } else if status == "dropped" || status == "done" || status == "inbox" {
                     selectedSection = .inbox
                 }
             }

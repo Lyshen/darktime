@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 enum LocalDatabase {
-    static let matterStatuses = ["inbox", "today", "later", "done", "dropped", "issue"]
+    static let matterStatuses = ["inbox", "issue", "done", "dropped"]
 
     private struct ShortcutImportLocation {
         let rootURL: URL
