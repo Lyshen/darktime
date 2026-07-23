@@ -273,6 +273,7 @@ private struct DailyEmptyLine: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
     }
 }
 
