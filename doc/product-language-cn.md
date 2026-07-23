@@ -32,7 +32,7 @@ Capture
                   -> Action
 ```
 
-当前 MVP 已支持手动 Project Issue。GitHub Issue / PR 同步会写入同一套 Issue 模型。
+当前 MVP 已支持手动 Project Issue，并能通过 `gh` CLI 把本地 repo 的 open PR 同步为 `Issue(kind: github_pr)`。未来 GitHub Issue 同步会写入同一套 Issue 模型。
 
 ## 关键解释
 
@@ -72,6 +72,7 @@ empty    -> 还没有 Action
 - Issue 列表、编辑、丢弃、转 Project。
 - Project 下的手动 Issue。
 - 本地 git repo Project。
+- 本地 repo 的 open PR 自动导入为 `github_pr` Issue。
 - commit 自动导入为 Action。
 - Attention Items 和 Timeline。
 

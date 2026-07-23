@@ -114,6 +114,45 @@ enum MatterRepository {
         return try LocalDatabase.upsertActions(actions)
     }
 
+    @discardableResult
+    static func syncLocalGitPullRequestIssues(projects: [ProjectSnapshot]) throws -> Int {
+        var changedCount = 0
+
+        for project in projects {
+            guard let localPath = project.localPath else {
+                continue
+            }
+            guard let repoSlug = LocalGitRepositoryService.githubRepositorySlug(at: localPath) else {
+                continue
+            }
+
+            do {
+                let pullRequests = try LocalGitRepositoryService.openPullRequestIssues(repoSlug: repoSlug)
+                for pullRequest in pullRequests {
+                    _ = try LocalDatabase.upsertProjectIssue(
+                        projectId: project.id,
+                        text: pullRequest.title,
+                        issueKind: "github_pr",
+                        source: "github",
+                        externalId: pullRequest.externalId,
+                        externalUrl: pullRequest.url,
+                        externalState: pullRequest.state.isEmpty ? "open" : pullRequest.state
+                    )
+                    changedCount += 1
+                }
+                changedCount += try LocalDatabase.closeMissingExternalIssues(
+                    projectId: project.id,
+                    issueKind: "github_pr",
+                    activeExternalIds: Set(pullRequests.map(\.externalId))
+                )
+            } catch {
+                continue
+            }
+        }
+
+        return changedCount
+    }
+
     static func ensureShortcutFolders() throws {
         try LocalDatabase.ensureShortcutFolders()
     }

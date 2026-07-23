@@ -505,7 +505,9 @@ final class DashboardModel: ObservableObject {
         localRepoActionSyncTask = Task { [weak self, projectsToSync] in
             let result = await Task.detached(priority: .utility) {
                 Result {
-                    try MatterRepository.syncLocalGitActions(projects: projectsToSync)
+                    let actionCount = try MatterRepository.syncLocalGitActions(projects: projectsToSync)
+                    let issueCount = try MatterRepository.syncLocalGitPullRequestIssues(projects: projectsToSync)
+                    return actionCount + issueCount
                 }
             }.value
 

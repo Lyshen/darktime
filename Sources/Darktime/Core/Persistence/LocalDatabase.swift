@@ -268,6 +268,7 @@ enum LocalDatabase {
         projectId: String,
         text: String,
         issueKind: String = "manual",
+        source: String = "manual",
         externalId: String? = nil,
         externalUrl: String? = nil,
         externalState: String? = nil
@@ -304,11 +305,12 @@ enum LocalDatabase {
                   external_id,
                   external_url,
                   external_state
-                ) VALUES (?, ?, 'issue', 'manual', ?, ?, NULL, ?, ?, ?, ?, ?);
+                ) VALUES (?, ?, 'issue', ?, ?, ?, NULL, ?, ?, ?, ?, ?);
                 """,
                 values: [
                     id,
                     trimmed,
+                    source,
                     now,
                     now,
                     projectId,
@@ -348,7 +350,7 @@ enum LocalDatabase {
             id: id,
             text: trimmed,
             status: "issue",
-            source: "manual",
+            source: source,
             createdAt: now,
             updatedAt: now,
             rawPayloadJson: nil,
@@ -358,6 +360,142 @@ enum LocalDatabase {
             externalUrl: normalizedOptional(externalUrl?.trimmingCharacters(in: .whitespacesAndNewlines)),
             externalState: normalizedOptional(externalState?.trimmingCharacters(in: .whitespacesAndNewlines)) ?? "open"
         )
+    }
+
+    static func upsertProjectIssue(
+        projectId: String,
+        text: String,
+        issueKind: String,
+        source: String,
+        externalId: String,
+        externalUrl: String?,
+        externalState: String?
+    ) throws -> MatterSnapshot {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedKind = normalizedIssueKind(issueKind)
+        let trimmedExternalId = externalId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedExternalUrl = normalizedOptional(externalUrl?.trimmingCharacters(in: .whitespacesAndNewlines))
+        let normalizedExternalState = normalizedOptional(externalState?.trimmingCharacters(in: .whitespacesAndNewlines)) ?? "open"
+        guard !trimmed.isEmpty else {
+            throw StorageError.invalidInput("Issue text cannot be empty.")
+        }
+        guard !trimmedExternalId.isEmpty else {
+            throw StorageError.invalidInput("External issue id cannot be empty.")
+        }
+
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        guard try project(id: projectId, db: db) != nil else {
+            throw StorageError.notFound("Project \(projectId) was not found.")
+        }
+
+        if let existing = try matter(projectId: projectId, issueKind: normalizedKind, externalId: trimmedExternalId, db: db) {
+            let now = isoNow()
+            try executePrepared(
+                """
+                UPDATE matters
+                SET text = ?,
+                    source = ?,
+                    status = 'issue',
+                    external_url = ?,
+                    external_state = ?,
+                    updated_at = ?
+                WHERE id = ?;
+                """,
+                values: [trimmed, source, normalizedExternalUrl, normalizedExternalState, now, existing.id],
+                db: db
+            )
+
+            return MatterSnapshot(
+                id: existing.id,
+                text: trimmed,
+                status: "issue",
+                source: source,
+                createdAt: existing.createdAt,
+                updatedAt: now,
+                rawPayloadJson: existing.rawPayloadJson,
+                projectId: projectId,
+                issueKind: normalizedKind,
+                externalId: trimmedExternalId,
+                externalUrl: normalizedExternalUrl,
+                externalState: normalizedExternalState
+            )
+        }
+
+        return try createProjectIssue(
+            projectId: projectId,
+            text: trimmed,
+            issueKind: normalizedKind,
+            source: source,
+            externalId: trimmedExternalId,
+            externalUrl: normalizedExternalUrl,
+            externalState: normalizedExternalState
+        )
+    }
+
+    static func closeMissingExternalIssues(projectId: String, issueKind: String, activeExternalIds: Set<String>) throws -> Int {
+        let normalizedKind = normalizedIssueKind(issueKind)
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        let current = try queryPrepared(
+            """
+            SELECT id, text, status, source, created_at, updated_at, raw_payload_json,
+                   project_id, issue_kind, external_id, external_url, external_state
+            FROM matters
+            WHERE project_id = ? AND issue_kind = ? AND status = 'issue';
+            """,
+            values: [projectId, normalizedKind],
+            db: db,
+            row: matterSnapshot
+        )
+
+        let stale = current.filter { issue in
+            guard let externalId = issue.externalId else {
+                return false
+            }
+            return !activeExternalIds.contains(externalId)
+        }
+        guard !stale.isEmpty else {
+            return 0
+        }
+
+        let now = isoNow()
+        try exec("BEGIN TRANSACTION;", db: db)
+        do {
+            for issue in stale {
+                try executePrepared(
+                    """
+                    UPDATE matters
+                    SET status = 'done', external_state = 'closed', updated_at = ?
+                    WHERE id = ?;
+                    """,
+                    values: [now, issue.id],
+                    db: db
+                )
+                try executePrepared(
+                    """
+                    INSERT INTO matter_logs (
+                      matter_id,
+                      created_at,
+                      action,
+                      from_status,
+                      to_status,
+                      summary
+                    ) VALUES (?, ?, 'external_closed', 'issue', 'done', ?);
+                    """,
+                    values: [issue.id, now, "External issue is no longer open"],
+                    db: db
+                )
+            }
+            try exec("COMMIT;", db: db)
+        } catch {
+            try? exec("ROLLBACK;", db: db)
+            throw error
+        }
+
+        return stale.count
     }
 
     static func createLocalRepoProject(title: String, localPath: String, intention: String? = nil) throws -> ProjectSnapshot {
@@ -1006,6 +1144,22 @@ enum LocalDatabase {
             LIMIT 1;
             """,
             values: [id],
+            db: db,
+            row: matterSnapshot
+        )
+        return rows.first
+    }
+
+    private static func matter(projectId: String, issueKind: String, externalId: String, db: OpaquePointer) throws -> MatterSnapshot? {
+        let rows = try queryPrepared(
+            """
+            SELECT id, text, status, source, created_at, updated_at, raw_payload_json,
+                   project_id, issue_kind, external_id, external_url, external_state
+            FROM matters
+            WHERE project_id = ? AND issue_kind = ? AND external_id = ?
+            LIMIT 1;
+            """,
+            values: [projectId, issueKind, externalId],
             db: db,
             row: matterSnapshot
         )
