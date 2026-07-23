@@ -40,6 +40,12 @@ enum AttentionTimelineRange: String, CaseIterable, Identifiable {
         return count * cellWidth + max(0, count - 1) * cellSpacing
     }
 
+    func fittedCellWidth(in width: CGFloat) -> CGFloat {
+        let count = CGFloat(bucketCount)
+        let spacingWidth = max(0, count - 1) * cellSpacing
+        return max(1, (width - spacingWidth) / count)
+    }
+
     static var stableStripWidth: CGFloat {
         allCases.map(\.stripWidth).max() ?? 0
     }
@@ -316,17 +322,14 @@ private struct AttentionTimelineAxis: View {
     var body: some View {
         HStack(spacing: AttentionTimelineLayout.horizontalSpacing) {
             Color.clear.frame(width: AttentionTimelineLayout.labelWidth, height: 1)
-            ZStack(alignment: .trailing) {
-                HStack {
-                    Text(axisStart)
-                    Spacer()
-                    Text(axisEnd)
-                }
-                .frame(width: range.stripWidth)
+            HStack {
+                Text(axisStart)
+                Spacer()
+                Text(axisEnd)
             }
             .font(.system(size: 10, weight: .regular, design: .default))
             .foregroundStyle(DTColor.dimmed)
-            .frame(width: AttentionTimelineLayout.stripWidth, alignment: .trailing)
+            .frame(width: AttentionTimelineLayout.stripWidth)
             Color.clear.frame(width: AttentionTimelineLayout.summaryWidth, height: 1)
         }
     }
@@ -374,8 +377,7 @@ private struct AttentionTimelineRow: View {
             .frame(width: AttentionTimelineLayout.labelWidth, alignment: .leading)
 
             AttentionTimelineStrip(range: range, buckets: buckets, counts: row.counts)
-                .frame(width: range.stripWidth, alignment: .trailing)
-                .frame(width: AttentionTimelineLayout.stripWidth, alignment: .trailing)
+                .frame(width: AttentionTimelineLayout.stripWidth)
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text("\(row.total)")
@@ -420,7 +422,7 @@ private struct AttentionTimelineStrip: View {
                 let count = counts.indices.contains(index) ? counts[index] : 0
                 RoundedRectangle(cornerRadius: 3)
                     .fill(heatColor(for: count))
-                    .frame(width: range.cellWidth, height: range.cellHeight)
+                    .frame(width: range.fittedCellWidth(in: AttentionTimelineLayout.stripWidth), height: range.cellHeight)
                     .overlay(
                         RoundedRectangle(cornerRadius: 3)
                             .stroke(Color.black.opacity(count > 0 ? 0.03 : 0.045), lineWidth: 1)
