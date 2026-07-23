@@ -176,29 +176,37 @@ struct AttentionTimelineRangePicker: View {
     @Binding var selection: AttentionTimelineRange
 
     var body: some View {
-        HStack(spacing: 2) {
+        Menu {
             ForEach(AttentionTimelineRange.allCases) { range in
                 Button {
                     selection = range
                 } label: {
-                    Text(range.rawValue)
-                        .font(.system(size: 10, weight: .medium, design: .default))
-                        .foregroundStyle(selection == range ? DTColor.text : DTColor.muted)
-                        .padding(.horizontal, 6)
-                        .frame(height: 23)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(selection == range ? Color.white : Color.clear)
-                        )
+                    if selection == range {
+                        Label(range.rawValue, systemImage: "checkmark")
+                    } else {
+                        Text(range.rawValue)
+                    }
                 }
-                .buttonStyle(.plain)
             }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 12, weight: .regular))
+            }
+            .foregroundStyle(DTColor.text)
+            .frame(width: 28, height: 25)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
+            )
         }
-        .padding(2)
-        .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(Color.black.opacity(0.045))
-        )
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Timeline range: \(selection.rawValue)")
     }
 }
 
