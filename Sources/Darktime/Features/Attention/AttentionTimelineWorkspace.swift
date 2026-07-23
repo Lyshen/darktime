@@ -170,6 +170,15 @@ private enum AttentionTimelineLayout {
     static let horizontalSpacing: CGFloat = 14
     static let summaryWidth: CGFloat = 74
     static let stripWidth = AttentionTimelineRange.stableStripWidth
+    static let axisLabelWidth: CGFloat = 128
+
+    static var stripLeading: CGFloat {
+        labelWidth + horizontalSpacing
+    }
+
+    static var contentWidth: CGFloat {
+        labelWidth + stripWidth + summaryWidth + horizontalSpacing * 2
+    }
 }
 
 struct AttentionTimelineRangePicker: View {
@@ -231,8 +240,8 @@ struct AttentionTimelineWorkspace: View {
                     }
                 }
             }
-            .frame(maxWidth: 980, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            .frame(width: AttentionTimelineLayout.contentWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 42)
             .padding(.top, 28)
             .padding(.bottom, 40)
@@ -320,22 +329,19 @@ private struct AttentionTimelineAxis: View {
     let buckets: [AttentionTimelineBucket]
 
     var body: some View {
-        HStack(spacing: AttentionTimelineLayout.horizontalSpacing) {
-            Color.clear.frame(width: AttentionTimelineLayout.labelWidth, height: 1)
-            Color.clear
-                .frame(width: AttentionTimelineLayout.stripWidth, height: 12)
-                .overlay(alignment: .leading) {
-                    Text(axisStart)
-                        .lineLimit(1)
-                }
-                .overlay(alignment: .trailing) {
-                    Text(axisEnd)
-                        .lineLimit(1)
-                }
-            .font(.system(size: 10, weight: .regular, design: .default))
-            .foregroundStyle(DTColor.dimmed)
-            Color.clear.frame(width: AttentionTimelineLayout.summaryWidth, height: 1)
+        ZStack(alignment: .leading) {
+            Text(axisStart)
+                .frame(width: AttentionTimelineLayout.axisLabelWidth, alignment: .leading)
+                .offset(x: AttentionTimelineLayout.stripLeading)
+
+            Text(axisEnd)
+                .frame(width: AttentionTimelineLayout.axisLabelWidth, alignment: .trailing)
+                .offset(x: AttentionTimelineLayout.stripLeading + AttentionTimelineLayout.stripWidth - AttentionTimelineLayout.axisLabelWidth)
         }
+        .font(.system(size: 10, weight: .regular, design: .default))
+        .foregroundStyle(DTColor.dimmed)
+        .lineLimit(1)
+        .frame(width: AttentionTimelineLayout.contentWidth, height: 12, alignment: .leading)
     }
 
     private var axisStart: String {
@@ -394,6 +400,7 @@ private struct AttentionTimelineRow: View {
             }
             .frame(width: AttentionTimelineLayout.summaryWidth, alignment: .trailing)
         }
+        .frame(width: AttentionTimelineLayout.contentWidth, alignment: .leading)
         .padding(.vertical, 13)
     }
 
@@ -454,6 +461,7 @@ private struct AttentionTimelineHairline: View {
     var body: some View {
         Rectangle()
             .fill(Color.black.opacity(0.055))
+            .frame(width: AttentionTimelineLayout.contentWidth)
             .frame(height: 1)
     }
 }
