@@ -162,6 +162,7 @@ private enum AttentionTimelineLayout {
     static let horizontalSpacing: CGFloat = 14
     static let summaryWidth: CGFloat = 74
     static let axisLabelWidth: CGFloat = 128
+    static let rowBodyMinHeight: CGFloat = 67
 
     static var stripWidth: CGFloat {
         contentWidth - labelWidth - summaryWidth - horizontalSpacing * 2
@@ -365,25 +366,24 @@ private struct AttentionTimelineRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: AttentionTimelineLayout.horizontalSpacing) {
-            VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(row.repo.project.title)
-                    .font(.system(size: 14, weight: .medium, design: .default))
+                    .font(.system(size: 15, weight: .medium, design: .default))
                     .foregroundStyle(DTColor.text)
                     .lineLimit(1)
+                    .layoutPriority(2)
 
                 if let intentionText {
                     Text(intentionText)
-                        .font(.system(size: 12, weight: .regular, design: .default))
-                        .foregroundStyle(DTColor.text.opacity(0.48))
-                        .lineLimit(1)
-                } else {
-                    Text(row.repo.repoName)
-                        .font(.system(size: 12, weight: .regular, design: .default))
-                        .foregroundStyle(DTColor.dimmed)
+                        .font(.system(size: 13, weight: .regular, design: .default))
+                        .foregroundStyle(DTColor.text.opacity(0.5))
                         .lineLimit(1)
                 }
+
+                Spacer(minLength: 8)
             }
             .frame(width: AttentionTimelineLayout.labelWidth, alignment: .leading)
+            .frame(minHeight: AttentionTimelineLayout.rowBodyMinHeight, alignment: .topLeading)
 
             AttentionTimelineStrip(range: range, buckets: buckets, counts: row.counts)
                 .frame(width: AttentionTimelineLayout.stripWidth, alignment: .leading)
@@ -400,6 +400,7 @@ private struct AttentionTimelineRow: View {
             .frame(width: AttentionTimelineLayout.summaryWidth, alignment: .trailing)
         }
         .frame(width: AttentionTimelineLayout.contentWidth, alignment: .leading)
+        .frame(minHeight: AttentionTimelineLayout.rowBodyMinHeight, alignment: .leading)
         .padding(.vertical, 13)
     }
 
