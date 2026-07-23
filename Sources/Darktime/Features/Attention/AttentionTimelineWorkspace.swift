@@ -35,19 +35,10 @@ enum AttentionTimelineRange: String, CaseIterable, Identifiable {
         }
     }
 
-    var stripWidth: CGFloat {
-        let count = CGFloat(bucketCount)
-        return count * cellWidth + max(0, count - 1) * cellSpacing
-    }
-
     func fittedCellWidth(in width: CGFloat) -> CGFloat {
         let count = CGFloat(bucketCount)
         let spacingWidth = max(0, count - 1) * cellSpacing
         return max(1, (width - spacingWidth) / count)
-    }
-
-    static var stableStripWidth: CGFloat {
-        allCases.map(\.stripWidth).max() ?? 0
     }
 
     var bucketCount: Int {
@@ -166,18 +157,18 @@ enum AttentionTimelineRange: String, CaseIterable, Identifiable {
 }
 
 private enum AttentionTimelineLayout {
+    static let contentWidth: CGFloat = 820
     static let labelWidth: CGFloat = 168
     static let horizontalSpacing: CGFloat = 14
     static let summaryWidth: CGFloat = 74
-    static let stripWidth = AttentionTimelineRange.stableStripWidth
     static let axisLabelWidth: CGFloat = 128
+
+    static var stripWidth: CGFloat {
+        contentWidth - labelWidth - summaryWidth - horizontalSpacing * 2
+    }
 
     static var stripLeading: CGFloat {
         labelWidth + horizontalSpacing
-    }
-
-    static var contentWidth: CGFloat {
-        labelWidth + stripWidth + summaryWidth + horizontalSpacing * 2
     }
 }
 
