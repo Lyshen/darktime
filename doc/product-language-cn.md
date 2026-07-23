@@ -89,4 +89,4 @@ empty    -> 还没有 Action
 
 Swift 层尽量使用当前产品语言：`MatterSnapshot`、`ProjectSnapshot`、`ActionSnapshot`、`AttentionWorkspace`。
 
-SQLite 里仍保留部分历史表名，例如 `roots` 和 `output_traces`。这是本地数据兼容策略，不代表当前产品语言。
+SQLite 物理表名直接使用当前产品语言：`matters`、`projects`、`actions`、`matter_logs`。

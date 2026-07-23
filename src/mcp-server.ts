@@ -419,6 +419,27 @@ async function initializeStorage(): Promise<void> {
         metadata_json TEXT,
         FOREIGN KEY (matter_id) REFERENCES matters(id)
       );
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        intention TEXT,
+        kind TEXT NOT NULL,
+        local_path TEXT UNIQUE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS actions (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        external_id TEXT NOT NULL,
+        happened_at TEXT NOT NULL,
+        summary TEXT,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(project_id, source, external_id)
+      );
       CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_seen ON mcp_sessions(last_seen_at DESC);
       CREATE INDEX IF NOT EXISTS idx_action_logs_created_at ON action_logs(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_action_logs_session_id ON action_logs(session_id);
@@ -426,18 +447,11 @@ async function initializeStorage(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_matters_created_at ON matters(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_matter_logs_created_at ON matter_logs(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_matter_logs_matter_id ON matter_logs(matter_id);
-    `);
-    await ensureColumn("matters", "project_id", "TEXT");
-    await ensureColumn("matters", "issue_kind", "TEXT");
-    await ensureColumn("matters", "external_id", "TEXT");
-    await ensureColumn("matters", "external_url", "TEXT");
-    await ensureColumn("matters", "external_state", "TEXT");
-    await sqliteExec(`
-      CREATE INDEX IF NOT EXISTS idx_matters_project_updated ON matters(project_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_matters_project_status ON matters(project_id, status, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_matters_external_issue ON matters(issue_kind, external_id);
-      UPDATE matters SET status = 'issue' WHERE status = 'rootbox';
-      UPDATE matter_logs SET from_status = 'issue' WHERE from_status = 'rootbox';
-      UPDATE matter_logs SET to_status = 'issue' WHERE to_status = 'rootbox';
+      CREATE INDEX IF NOT EXISTS idx_projects_kind_updated ON projects(kind, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_actions_project_happened ON actions(project_id, happened_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_actions_source_kind ON actions(source, kind, happened_at DESC);
     `);
   });
 }
@@ -713,14 +727,6 @@ async function sqliteQueryJson(sql: string): Promise<unknown[]> {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     throw new Error(`sqlite3 returned invalid JSON: ${stdout}`);
-  }
-}
-
-async function ensureColumn(table: string, column: string, definition: string): Promise<void> {
-  const rows = await sqliteQueryJson(`PRAGMA table_info(${table});`) as Array<Record<string, unknown>>;
-  const hasColumn = rows.some((row) => row.name === column);
-  if (!hasColumn) {
-    await sqliteExec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
   }
 }
 

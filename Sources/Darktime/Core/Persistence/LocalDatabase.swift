@@ -125,7 +125,7 @@ enum LocalDatabase {
               metadata_json TEXT,
               FOREIGN KEY (matter_id) REFERENCES matters(id)
             );
-            CREATE TABLE IF NOT EXISTS roots (
+            CREATE TABLE IF NOT EXISTS projects (
               id TEXT PRIMARY KEY,
               title TEXT NOT NULL,
               intention TEXT,
@@ -134,9 +134,9 @@ enum LocalDatabase {
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS output_traces (
+            CREATE TABLE IF NOT EXISTS actions (
               id TEXT PRIMARY KEY,
-              root_id TEXT NOT NULL,
+              project_id TEXT NOT NULL,
               source TEXT NOT NULL,
               kind TEXT NOT NULL,
               external_id TEXT NOT NULL,
@@ -144,24 +144,23 @@ enum LocalDatabase {
               summary TEXT,
               metadata_json TEXT,
               created_at TEXT NOT NULL,
-              UNIQUE(root_id, source, external_id)
+              UNIQUE(project_id, source, external_id)
             );
             CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_seen ON mcp_sessions(last_seen_at DESC);
             CREATE INDEX IF NOT EXISTS idx_action_logs_created_at ON action_logs(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_action_logs_session_id ON action_logs(session_id);
             CREATE INDEX IF NOT EXISTS idx_matters_status_updated ON matters(status, updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_matters_created_at ON matters(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_matters_project_status ON matters(project_id, status, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_matters_external_issue ON matters(issue_kind, external_id);
             CREATE INDEX IF NOT EXISTS idx_matter_logs_created_at ON matter_logs(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_matter_logs_matter_id ON matter_logs(matter_id);
-            CREATE INDEX IF NOT EXISTS idx_roots_kind_updated ON roots(kind, updated_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_output_traces_root_happened ON output_traces(root_id, happened_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_output_traces_source_kind ON output_traces(source, kind, happened_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_projects_kind_updated ON projects(kind, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_actions_project_happened ON actions(project_id, happened_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_actions_source_kind ON actions(source, kind, happened_at DESC);
             """,
             db: db
         )
-        try migrateProjects(db: db)
-        try migrateMatterIssueFields(db: db)
-        try migrateMatterStatuses(db: db)
     }
 
     static func importShortcutInbox() throws -> Int {
@@ -517,7 +516,7 @@ enum LocalDatabase {
                 let now = isoNow()
                 try executePrepared(
                     """
-                    UPDATE roots
+                    UPDATE projects
                     SET intention = ?, updated_at = ?
                     WHERE id = ?;
                     """,
@@ -541,7 +540,7 @@ enum LocalDatabase {
         let now = isoNow()
         try executePrepared(
             """
-            INSERT INTO roots (
+            INSERT INTO projects (
               id,
               title,
               intention,
@@ -593,7 +592,7 @@ enum LocalDatabase {
         let now = isoNow()
         try executePrepared(
             """
-            UPDATE roots
+            UPDATE projects
             SET title = ?, intention = ?, updated_at = ?
             WHERE id = ?;
             """,
@@ -624,8 +623,8 @@ enum LocalDatabase {
         do {
             try executePrepared(
                 """
-                DELETE FROM output_traces
-                WHERE root_id = ?;
+                DELETE FROM actions
+                WHERE project_id = ?;
                 """,
                 values: [id],
                 db: db
@@ -641,7 +640,7 @@ enum LocalDatabase {
             )
             try executePrepared(
                 """
-                DELETE FROM roots
+                DELETE FROM projects
                 WHERE id = ?;
                 """,
                 values: [id],
@@ -669,9 +668,9 @@ enum LocalDatabase {
             for action in actions {
                 try executePrepared(
                     """
-                    INSERT INTO output_traces (
+                    INSERT INTO actions (
                       id,
-                      root_id,
+                      project_id,
                       source,
                       kind,
                       external_id,
@@ -680,7 +679,7 @@ enum LocalDatabase {
                       metadata_json,
                       created_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(root_id, source, external_id) DO UPDATE SET
+                    ON CONFLICT(project_id, source, external_id) DO UPDATE SET
                       kind = excluded.kind,
                       happened_at = excluded.happened_at,
                       summary = excluded.summary,
@@ -979,7 +978,7 @@ enum LocalDatabase {
 
         let sql = """
             SELECT id, title, intention, kind, local_path, created_at, updated_at
-            FROM roots
+            FROM projects
             ORDER BY updated_at DESC
             LIMIT \(max(1, limit));
             """
@@ -994,7 +993,7 @@ enum LocalDatabase {
         let sql = """
             SELECT
               id,
-              root_id,
+              project_id,
               source,
               kind,
               external_id,
@@ -1002,7 +1001,7 @@ enum LocalDatabase {
               summary,
               metadata_json,
               created_at
-            FROM output_traces
+            FROM actions
             ORDER BY happened_at DESC
             LIMIT \(max(1, limit));
             """
@@ -1170,7 +1169,7 @@ enum LocalDatabase {
         let rows = try queryPrepared(
             """
             SELECT id, title, intention, kind, local_path, created_at, updated_at
-            FROM roots
+            FROM projects
             WHERE local_path = ?
             LIMIT 1;
             """,
@@ -1185,7 +1184,7 @@ enum LocalDatabase {
         let rows = try queryPrepared(
             """
             SELECT id, title, intention, kind, local_path, created_at, updated_at
-            FROM roots
+            FROM projects
             WHERE id = ?
             LIMIT 1;
             """,
@@ -1304,52 +1303,6 @@ enum LocalDatabase {
             sqlite3_free(errorMessage)
             throw StorageError.sqlite(message)
         }
-    }
-
-    private static func migrateProjects(db: OpaquePointer) throws {
-        do {
-            try exec("ALTER TABLE roots ADD COLUMN intention TEXT;", db: db)
-        } catch StorageError.sqlite(let message) where message.localizedCaseInsensitiveContains("duplicate column") {
-            return
-        } catch {
-            throw error
-        }
-    }
-
-    private static func migrateMatterIssueFields(db: OpaquePointer) throws {
-        try addColumnIfMissing("ALTER TABLE matters ADD COLUMN project_id TEXT;", db: db)
-        try addColumnIfMissing("ALTER TABLE matters ADD COLUMN issue_kind TEXT;", db: db)
-        try addColumnIfMissing("ALTER TABLE matters ADD COLUMN external_id TEXT;", db: db)
-        try addColumnIfMissing("ALTER TABLE matters ADD COLUMN external_url TEXT;", db: db)
-        try addColumnIfMissing("ALTER TABLE matters ADD COLUMN external_state TEXT;", db: db)
-        try exec(
-            """
-            CREATE INDEX IF NOT EXISTS idx_matters_project_status ON matters(project_id, status, updated_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_matters_external_issue ON matters(issue_kind, external_id);
-            """,
-            db: db
-        )
-    }
-
-    private static func addColumnIfMissing(_ sql: String, db: OpaquePointer) throws {
-        do {
-            try exec(sql, db: db)
-        } catch StorageError.sqlite(let message) where message.localizedCaseInsensitiveContains("duplicate column") {
-            return
-        } catch {
-            throw error
-        }
-    }
-
-    private static func migrateMatterStatuses(db: OpaquePointer) throws {
-        try exec(
-            """
-            UPDATE matters SET status = 'issue' WHERE status = 'rootbox';
-            UPDATE matter_logs SET from_status = 'issue' WHERE from_status = 'rootbox';
-            UPDATE matter_logs SET to_status = 'issue' WHERE to_status = 'rootbox';
-            """,
-            db: db
-        )
     }
 
     private static func executePrepared(_ sql: String, values: [String?], db: OpaquePointer) throws {
