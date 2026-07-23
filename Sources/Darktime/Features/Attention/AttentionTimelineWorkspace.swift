@@ -40,6 +40,10 @@ enum AttentionTimelineRange: String, CaseIterable, Identifiable {
         return count * cellWidth + max(0, count - 1) * cellSpacing
     }
 
+    static var stableStripWidth: CGFloat {
+        allCases.map(\.stripWidth).max() ?? 0
+    }
+
     var bucketCount: Int {
         switch self {
         case .fortyEightHours: return 48
@@ -153,6 +157,13 @@ enum AttentionTimelineRange: String, CaseIterable, Identifiable {
             return AttentionTimelineBucket(start: start, end: end, unit: .tenDay)
         }
     }
+}
+
+private enum AttentionTimelineLayout {
+    static let labelWidth: CGFloat = 168
+    static let horizontalSpacing: CGFloat = 14
+    static let summaryWidth: CGFloat = 74
+    static let stripWidth = AttentionTimelineRange.stableStripWidth
 }
 
 struct AttentionTimelineRangePicker: View {
@@ -303,17 +314,20 @@ private struct AttentionTimelineAxis: View {
     let buckets: [AttentionTimelineBucket]
 
     var body: some View {
-        HStack(spacing: 14) {
-            Color.clear.frame(width: 168, height: 1)
-            HStack {
-                Text(axisStart)
-                Spacer()
-                Text(axisEnd)
+        HStack(spacing: AttentionTimelineLayout.horizontalSpacing) {
+            Color.clear.frame(width: AttentionTimelineLayout.labelWidth, height: 1)
+            ZStack(alignment: .trailing) {
+                HStack {
+                    Text(axisStart)
+                    Spacer()
+                    Text(axisEnd)
+                }
+                .frame(width: range.stripWidth)
             }
             .font(.system(size: 10, weight: .regular, design: .default))
             .foregroundStyle(DTColor.dimmed)
-            .frame(width: range.stripWidth)
-            Color.clear.frame(width: 74, height: 1)
+            .frame(width: AttentionTimelineLayout.stripWidth, alignment: .trailing)
+            Color.clear.frame(width: AttentionTimelineLayout.summaryWidth, height: 1)
         }
     }
 
@@ -338,7 +352,7 @@ private struct AttentionTimelineRow: View {
     let buckets: [AttentionTimelineBucket]
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: AttentionTimelineLayout.horizontalSpacing) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(row.repo.project.title)
                     .font(.system(size: 14, weight: .medium, design: .default))
@@ -357,10 +371,11 @@ private struct AttentionTimelineRow: View {
                         .lineLimit(1)
                 }
             }
-            .frame(width: 168, alignment: .leading)
+            .frame(width: AttentionTimelineLayout.labelWidth, alignment: .leading)
 
             AttentionTimelineStrip(range: range, buckets: buckets, counts: row.counts)
-                .frame(width: range.stripWidth)
+                .frame(width: range.stripWidth, alignment: .trailing)
+                .frame(width: AttentionTimelineLayout.stripWidth, alignment: .trailing)
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text("\(row.total)")
@@ -371,7 +386,7 @@ private struct AttentionTimelineRow: View {
                     .foregroundStyle(DTColor.dimmed)
                     .lineLimit(1)
             }
-            .frame(width: 74, alignment: .trailing)
+            .frame(width: AttentionTimelineLayout.summaryWidth, alignment: .trailing)
         }
         .padding(.vertical, 13)
     }
