@@ -37,9 +37,11 @@ struct SourcesPanel: View {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionEyebrow("Apple Calendars")
                     if model.calendars.isEmpty {
-                        Text("No calendars visible yet.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(DTColor.muted)
+                        EmptyStateLine(
+                            systemImage: "calendar",
+                            title: "No calendars visible",
+                            detail: "Grant Calendar access to load local calendars."
+                        )
                     } else {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 8) {
@@ -148,5 +150,4 @@ struct AgentsPanel: View {
         }
     }
 }
-
 

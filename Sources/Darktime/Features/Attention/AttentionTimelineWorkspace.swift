@@ -35,9 +35,10 @@ enum AttentionTimelineRange: String, CaseIterable, Identifiable {
         }
     }
 
-    var stripWidth: CGFloat {
+    func fittedCellWidth(in width: CGFloat) -> CGFloat {
         let count = CGFloat(bucketCount)
-        return count * cellWidth + max(0, count - 1) * cellSpacing
+        let spacingWidth = max(0, count - 1) * cellSpacing
+        return max(1, (width - spacingWidth) / count)
     }
 
     var bucketCount: Int {
@@ -155,33 +156,58 @@ enum AttentionTimelineRange: String, CaseIterable, Identifiable {
     }
 }
 
+private enum AttentionTimelineLayout {
+    static let contentWidth: CGFloat = 820
+    static let labelWidth: CGFloat = 168
+    static let horizontalSpacing: CGFloat = 14
+    static let summaryWidth: CGFloat = 74
+    static let axisLabelWidth: CGFloat = 128
+    static let rowBodyMinHeight: CGFloat = 67
+
+    static var stripWidth: CGFloat {
+        contentWidth - labelWidth - summaryWidth - horizontalSpacing * 2
+    }
+
+    static var stripLeading: CGFloat {
+        labelWidth + horizontalSpacing
+    }
+}
+
 struct AttentionTimelineRangePicker: View {
     @Binding var selection: AttentionTimelineRange
 
     var body: some View {
-        HStack(spacing: 2) {
+        Menu {
             ForEach(AttentionTimelineRange.allCases) { range in
                 Button {
                     selection = range
                 } label: {
-                    Text(range.rawValue)
-                        .font(.system(size: 10, weight: .medium, design: .default))
-                        .foregroundStyle(selection == range ? DTColor.text : DTColor.muted)
-                        .padding(.horizontal, 6)
-                        .frame(height: 23)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(selection == range ? Color.white : Color.clear)
-                        )
+                    if selection == range {
+                        Label(range.rawValue, systemImage: "checkmark")
+                    } else {
+                        Text(range.rawValue)
+                    }
                 }
-                .buttonStyle(.plain)
             }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 12, weight: .regular))
+            }
+            .foregroundStyle(DTColor.text)
+            .frame(width: 28, height: 25)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
+            )
         }
-        .padding(2)
-        .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(Color.black.opacity(0.045))
-        )
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Timeline range: \(selection.rawValue)")
     }
 }
 
@@ -214,8 +240,8 @@ struct AttentionTimelineWorkspace: View {
                     }
                 }
             }
-            .frame(maxWidth: 980, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            .frame(width: AttentionTimelineLayout.contentWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 42)
             .padding(.top, 28)
             .padding(.bottom, 40)
@@ -303,18 +329,19 @@ private struct AttentionTimelineAxis: View {
     let buckets: [AttentionTimelineBucket]
 
     var body: some View {
-        HStack(spacing: 14) {
-            Color.clear.frame(width: 168, height: 1)
-            HStack {
-                Text(axisStart)
-                Spacer()
-                Text(axisEnd)
-            }
-            .font(.system(size: 10, weight: .regular, design: .default))
-            .foregroundStyle(DTColor.dimmed)
-            .frame(width: range.stripWidth)
-            Color.clear.frame(width: 74, height: 1)
+        ZStack(alignment: .leading) {
+            Text(axisStart)
+                .frame(width: AttentionTimelineLayout.axisLabelWidth, alignment: .leading)
+                .offset(x: AttentionTimelineLayout.stripLeading)
+
+            Text(axisEnd)
+                .frame(width: AttentionTimelineLayout.axisLabelWidth, alignment: .trailing)
+                .offset(x: AttentionTimelineLayout.stripLeading + AttentionTimelineLayout.stripWidth - AttentionTimelineLayout.axisLabelWidth)
         }
+        .font(.system(size: 10, weight: .regular, design: .default))
+        .foregroundStyle(DTColor.dimmed)
+        .lineLimit(1)
+        .frame(width: AttentionTimelineLayout.contentWidth, height: 12, alignment: .leading)
     }
 
     private var axisStart: String {
@@ -338,29 +365,26 @@ private struct AttentionTimelineRow: View {
     let buckets: [AttentionTimelineBucket]
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .center, spacing: AttentionTimelineLayout.horizontalSpacing) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(row.repo.project.title)
-                    .font(.system(size: 14, weight: .medium, design: .default))
+                    .font(.system(size: 15, weight: .medium, design: .default))
                     .foregroundStyle(DTColor.text)
                     .lineLimit(1)
+                    .layoutPriority(2)
 
                 if let intentionText {
                     Text(intentionText)
-                        .font(.system(size: 12, weight: .regular, design: .default))
-                        .foregroundStyle(DTColor.text.opacity(0.48))
-                        .lineLimit(1)
-                } else {
-                    Text(row.repo.repoName)
-                        .font(.system(size: 12, weight: .regular, design: .default))
-                        .foregroundStyle(DTColor.dimmed)
+                        .font(.system(size: 13, weight: .regular, design: .default))
+                        .foregroundStyle(DTColor.text.opacity(0.5))
                         .lineLimit(1)
                 }
             }
-            .frame(width: 168, alignment: .leading)
+            .frame(width: AttentionTimelineLayout.labelWidth, alignment: .leading)
+            .frame(minHeight: AttentionTimelineLayout.rowBodyMinHeight, alignment: .leading)
 
             AttentionTimelineStrip(range: range, buckets: buckets, counts: row.counts)
-                .frame(width: range.stripWidth)
+                .frame(width: AttentionTimelineLayout.stripWidth, alignment: .leading)
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text("\(row.total)")
@@ -371,8 +395,10 @@ private struct AttentionTimelineRow: View {
                     .foregroundStyle(DTColor.dimmed)
                     .lineLimit(1)
             }
-            .frame(width: 74, alignment: .trailing)
+            .frame(width: AttentionTimelineLayout.summaryWidth, alignment: .trailing)
         }
+        .frame(width: AttentionTimelineLayout.contentWidth, alignment: .leading)
+        .frame(minHeight: AttentionTimelineLayout.rowBodyMinHeight, alignment: .leading)
         .padding(.vertical, 13)
     }
 
@@ -405,7 +431,7 @@ private struct AttentionTimelineStrip: View {
                 let count = counts.indices.contains(index) ? counts[index] : 0
                 RoundedRectangle(cornerRadius: 3)
                     .fill(heatColor(for: count))
-                    .frame(width: range.cellWidth, height: range.cellHeight)
+                    .frame(width: range.fittedCellWidth(in: AttentionTimelineLayout.stripWidth), height: range.cellHeight)
                     .overlay(
                         RoundedRectangle(cornerRadius: 3)
                             .stroke(Color.black.opacity(count > 0 ? 0.03 : 0.045), lineWidth: 1)
@@ -433,6 +459,7 @@ private struct AttentionTimelineHairline: View {
     var body: some View {
         Rectangle()
             .fill(Color.black.opacity(0.055))
+            .frame(width: AttentionTimelineLayout.contentWidth)
             .frame(height: 1)
     }
 }

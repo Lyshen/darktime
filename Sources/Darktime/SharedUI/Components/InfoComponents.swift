@@ -148,6 +148,7 @@ struct EmptyStateLine: View {
             }
         }
         .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
         .background(DTColor.row)
         .clipShape(RoundedRectangle(cornerRadius: 7))
     }
@@ -178,5 +179,4 @@ struct SignalDot: View {
             .shadow(color: color.opacity(0.45), radius: 5)
     }
 }
-
 
