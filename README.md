@@ -59,6 +59,12 @@ For development, override the path:
 DARKTIME_DB=/tmp/darktime.sqlite3 npm run mcp
 ```
 
+During MVP schema resets, quit Darktime and remove the local database if you want to rebuild from scratch:
+
+```bash
+rm -f "$HOME/Library/Application Support/Darktime/darktime.sqlite3"*
+```
+
 Shortcut Capture imports from the user's iCloud Drive. The primary location is the Shortcuts app container:
 
 ```text

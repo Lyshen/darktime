@@ -89,4 +89,4 @@ Out:
 
 Swift should use current product language where possible: `MatterSnapshot`, `ProjectSnapshot`, `ActionSnapshot`, `AttentionWorkspace`.
 
-SQLite still keeps some historical table names, such as `roots` and `output_traces`, for local data compatibility. They do not define the current product language.
+SQLite physical table names now use the current product language directly: `matters`, `projects`, `actions`, and `matter_logs`.
