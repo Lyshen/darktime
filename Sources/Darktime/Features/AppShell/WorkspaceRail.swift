@@ -34,7 +34,7 @@ struct WorkspaceRail: View {
             isSelected: model.selectedSection == section,
             count: count(for: section)
         ) {
-            model.selectedSection = section
+            model.selectSection(section)
         }
     }
 

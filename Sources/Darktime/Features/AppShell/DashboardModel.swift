@@ -117,6 +117,14 @@ final class DashboardModel: ObservableObject {
         }
     }
 
+    func selectSection(_ section: WorkspaceSection) {
+        if section == .today {
+            refreshDailyStateIfNeeded()
+            refreshStorage()
+        }
+        selectedSection = section
+    }
+
     func refresh() {
         refreshDailyStateIfNeeded()
         refreshStorage()
