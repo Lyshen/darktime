@@ -460,78 +460,16 @@ final class DashboardModel: ObservableObject {
     }
 
     private func refreshLocalRepoSnapshots(from actions: [ActionSnapshot]) {
-        let repoProjects = projects.filter { $0.kind == "local_repo" }
-        let actionsByProject = Dictionary(grouping: actions.filter { $0.source == "local_git" && $0.kind == "commit" }, by: \.projectId)
-        let issuesByProject = Dictionary(grouping: projectIssueMatters) { $0.projectId ?? "" }
-        localRepoSnapshots = repoProjects.compactMap { project in
-            cachedLocalRepoSnapshot(
-                project: project,
-                actions: actionsByProject[project.id] ?? [],
-                openIssueCount: issuesByProject[project.id]?.count ?? 0
-            )
-        }
-            .sorted { left, right in
-                localRepoSortKey(left) < localRepoSortKey(right)
-            }
-    }
-
-    private func cachedLocalRepoSnapshot(project: ProjectSnapshot, actions: [ActionSnapshot], openIssueCount: Int) -> LocalRepoSnapshot? {
-        guard let localPath = project.localPath else {
-            return nil
-        }
-
-        let sortedActions = actions.sorted { $0.happenedAt > $1.happenedAt }
-        let latestAction = sortedActions.first
-
-        return LocalRepoSnapshot(
-            project: project,
-            repoName: URL(fileURLWithPath: localPath, isDirectory: true).lastPathComponent,
-            rootPath: localPath,
-            branch: "cached",
-            lastCommitAt: latestAction?.happenedAt,
-            latestCommitSummary: latestAction?.summary ?? (isSyncingActions ? "Syncing local git..." : "No actions yet"),
-            commitsLast2Days: actionCount(in: sortedActions, days: 2),
-            commitsLast7Days: actionCount(in: sortedActions, days: 7),
-            commitsLast30Days: actionCount(in: sortedActions, days: 30),
-            hasUncommittedChanges: false,
-            state: localRepoState(lastOutputAt: latestAction?.happenedAt),
-            openIssueCount: openIssueCount
+        localRepoSnapshots = ProjectActionSyncService.snapshots(
+            projects: projects,
+            issueMatters: projectIssueMatters,
+            actions: actions,
+            isSyncing: isSyncingActions
         )
     }
 
-    private func actionCount(in actions: [ActionSnapshot], days: Int) -> Int {
-        let cutoff = Date().addingTimeInterval(-Double(days) * 86_400)
-        return actions.filter { action in
-            guard let date = parseISODate(action.happenedAt) else {
-                return false
-            }
-            return date >= cutoff
-        }.count
-    }
-
-    private func localRepoState(lastOutputAt: String?) -> String {
-        guard
-            let lastOutputAt,
-            let date = parseISODate(lastOutputAt)
-        else {
-            return "empty"
-        }
-
-        let days = Date().timeIntervalSince(date) / 86_400
-        if days <= 2 {
-            return "alive"
-        }
-        if days <= 7 {
-            return "quiet"
-        }
-        if days <= 30 {
-            return "fading"
-        }
-        return "inactive"
-    }
-
     private func scheduleLocalRepoActionSyncIfNeeded() {
-        let currentIDs = Set(projects.filter { $0.kind == "local_repo" }.map(\.id))
+        let currentIDs = ProjectActionSyncService.projectIDs(from: projects)
         let projectsChanged = lastLocalRepoActionSyncProjectIDs != currentIDs
 
         if projectsChanged || lastLocalRepoActionSyncAt == nil {
@@ -544,13 +482,13 @@ final class DashboardModel: ObservableObject {
             return
         }
 
-        if Date().timeIntervalSince(lastLocalRepoActionSyncAt) > 120 {
+        if Date().timeIntervalSince(lastLocalRepoActionSyncAt) > ProjectActionSyncService.syncInterval {
             scheduleLocalRepoActionSync(force: false)
         }
     }
 
     private func scheduleLocalRepoActionSync(force: Bool) {
-        let repoProjects = projects.filter { $0.kind == "local_repo" }
+        let repoProjects = ProjectActionSyncService.localRepoProjects(from: projects)
         guard !repoProjects.isEmpty else {
             localRepoActionSyncTask?.cancel()
             localRepoActionSyncTask = nil
@@ -562,7 +500,9 @@ final class DashboardModel: ObservableObject {
             return
         }
 
-        if !force, let lastLocalRepoActionSyncAt, Date().timeIntervalSince(lastLocalRepoActionSyncAt) < 120 {
+        if !force,
+           let lastLocalRepoActionSyncAt,
+           Date().timeIntervalSince(lastLocalRepoActionSyncAt) < ProjectActionSyncService.syncInterval {
             return
         }
 
@@ -573,9 +513,7 @@ final class DashboardModel: ObservableObject {
         localRepoActionSyncTask = Task { [weak self, projectsToSync] in
             let result = await Task.detached(priority: .utility) {
                 Result {
-                    let actionCount = try MatterRepository.syncLocalGitActions(projects: projectsToSync)
-                    let issueCount = try MatterRepository.syncLocalGitPullRequestIssues(projects: projectsToSync)
-                    return actionCount + issueCount
+                    try ProjectActionSyncService.sync(projects: projectsToSync)
                 }
             }.value
 
@@ -597,21 +535,6 @@ final class DashboardModel: ObservableObject {
                     self.actionSyncLastFinishedAt = ISO8601DateFormatter().string(from: Date())
                 }
             }
-        }
-    }
-
-    private func localRepoSortKey(_ repo: LocalRepoSnapshot) -> String {
-        "\(localRepoStateRank(repo.state))-\(repo.project.title.lowercased())"
-    }
-
-    private func localRepoStateRank(_ state: String) -> String {
-        switch state {
-        case "alive": return "0"
-        case "quiet": return "1"
-        case "fading": return "2"
-        case "inactive": return "3"
-        case "empty": return "4"
-        default: return "4"
         }
     }
 
