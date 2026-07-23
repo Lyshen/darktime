@@ -13,6 +13,7 @@ Darktime is a local-first attention workspace. It is not primarily a calendar, t
 | Issue | Something worth handling. | Not a todo; can stand alone or move into a Project. |
 | Project | A container for work that has entered sustained investment. | Not just an upgraded Issue; Projects create Issues and Actions. |
 | Action | One real movement that already happened on an Issue or Project. | Not a plan, reminder, or todo; it must have happened. |
+| Today | Today's focus issues, actions, and end note. | Not a full calendar or task manager. |
 | Attention View | A UI aggregation of Issues, Projects, and Actions. | Not a separate business entity. |
 
 ## Flow
@@ -74,13 +75,13 @@ In:
 - Local git repo Projects.
 - Open PRs from local repos imported as `github_pr` Issues.
 - Commits imported as Actions.
+- Today Focus and End Note.
 - Attention Items and Timeline.
 
 Out:
 
 - Project detail.
 - Manual Action.
-- Today planning.
 - AI observer / coach.
 - Automatic calendar scheduling.
 

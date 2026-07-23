@@ -13,6 +13,7 @@ struct WorkspaceRail: View {
             railButton(for: .capture)
 
             VStack(alignment: .leading, spacing: 6) {
+                railButton(for: .today)
                 railButton(for: .inbox)
                 railButton(for: .attention)
             }
@@ -40,6 +41,7 @@ struct WorkspaceRail: View {
     private func count(for section: WorkspaceSection) -> Int? {
         switch section {
         case .capture: return nil
+        case .today: return model.dailyFocusIssueIDs.count
         case .inbox: return model.inboxMatters.count
         case .attention: return model.attentionItemCount
         case .dropped: return nil
