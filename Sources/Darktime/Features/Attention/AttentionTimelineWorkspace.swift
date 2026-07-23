@@ -322,14 +322,18 @@ private struct AttentionTimelineAxis: View {
     var body: some View {
         HStack(spacing: AttentionTimelineLayout.horizontalSpacing) {
             Color.clear.frame(width: AttentionTimelineLayout.labelWidth, height: 1)
-            HStack {
-                Text(axisStart)
-                Spacer()
-                Text(axisEnd)
-            }
+            Color.clear
+                .frame(width: AttentionTimelineLayout.stripWidth, height: 12)
+                .overlay(alignment: .leading) {
+                    Text(axisStart)
+                        .lineLimit(1)
+                }
+                .overlay(alignment: .trailing) {
+                    Text(axisEnd)
+                        .lineLimit(1)
+                }
             .font(.system(size: 10, weight: .regular, design: .default))
             .foregroundStyle(DTColor.dimmed)
-            .frame(width: AttentionTimelineLayout.stripWidth)
             Color.clear.frame(width: AttentionTimelineLayout.summaryWidth, height: 1)
         }
     }
@@ -377,7 +381,7 @@ private struct AttentionTimelineRow: View {
             .frame(width: AttentionTimelineLayout.labelWidth, alignment: .leading)
 
             AttentionTimelineStrip(range: range, buckets: buckets, counts: row.counts)
-                .frame(width: AttentionTimelineLayout.stripWidth)
+                .frame(width: AttentionTimelineLayout.stripWidth, alignment: .leading)
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text("\(row.total)")
