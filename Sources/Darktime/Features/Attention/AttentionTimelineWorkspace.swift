@@ -366,7 +366,7 @@ private struct AttentionTimelineRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: AttentionTimelineLayout.horizontalSpacing) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(row.repo.project.title)
                     .font(.system(size: 15, weight: .medium, design: .default))
                     .foregroundStyle(DTColor.text)
@@ -379,11 +379,9 @@ private struct AttentionTimelineRow: View {
                         .foregroundStyle(DTColor.text.opacity(0.5))
                         .lineLimit(1)
                 }
-
-                Spacer(minLength: 8)
             }
             .frame(width: AttentionTimelineLayout.labelWidth, alignment: .leading)
-            .frame(minHeight: AttentionTimelineLayout.rowBodyMinHeight, alignment: .topLeading)
+            .frame(minHeight: AttentionTimelineLayout.rowBodyMinHeight, alignment: .leading)
 
             AttentionTimelineStrip(range: range, buckets: buckets, counts: row.counts)
                 .frame(width: AttentionTimelineLayout.stripWidth, alignment: .leading)
