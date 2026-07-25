@@ -55,8 +55,8 @@ GitHub Issue 是 Darktime Issue 的一个外部表达，不是唯一来源。
 
 近期应该验证的链路：
 
-- 从 GitHub repo 拉取 open issues 到本地 Project。
-- 在 Darktime 创建本地 Issue 后，可以快速发布到 GitHub repo。
+- 从 GitHub repo 拉取 assigned to me 的 open issues 到本地 Project。
+- 在 Darktime 创建本地 Issue 后，可以快速发布到 GitHub repo，并默认 assign 给自己。
 - v0 只保存 GitHub issue number / url / state，不做复杂双向编辑同步。
 - 发布默认需要用户明确触发或开启 Project 级别开关，避免把私人想法误推到公开仓库。
 

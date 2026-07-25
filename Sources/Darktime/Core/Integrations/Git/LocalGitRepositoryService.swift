@@ -129,6 +129,8 @@ enum LocalGitRepositoryService {
                 repoSlug,
                 "--state",
                 "open",
+                "--assignee",
+                "@me",
                 "--limit",
                 "100",
                 "--json",
@@ -215,7 +217,9 @@ enum LocalGitRepositoryService {
                 "--title",
                 trimmedTitle,
                 "--body",
-                ""
+                "",
+                "--assignee",
+                "@me"
             ],
             allowFailure: false,
             timeout: 18
