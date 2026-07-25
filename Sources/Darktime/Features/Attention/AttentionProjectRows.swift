@@ -55,8 +55,7 @@ struct LocalRepoProjectRow: View {
                     .foregroundStyle(DTColor.muted)
                     .lineLimit(2)
 
-                HStack(spacing: 6) {
-                    Spacer()
+                HStack(spacing: 8) {
                     if !issues.isEmpty {
                         ProjectIssueToggle(
                             count: issues.count,
@@ -67,6 +66,7 @@ struct LocalRepoProjectRow: View {
                             }
                         }
                     }
+                    Spacer()
                     ZStack(alignment: .trailing) {
                         ProjectActivityMetaGroup(
                             time: timeSummary,
