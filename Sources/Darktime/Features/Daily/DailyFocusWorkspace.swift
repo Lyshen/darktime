@@ -144,7 +144,7 @@ private struct DailyFocusHeader: View {
                 .foregroundStyle(DTColor.muted)
                 .lineLimit(1)
             Spacer()
-            QuietHeaderButton("Add Issue") {
+            QuietHeaderButton("Add to Today") {
                 onAdd()
             }
             QuietHeaderButton("Clear Focus", isEnabled: canClear) {

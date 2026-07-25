@@ -43,7 +43,7 @@ struct WorkspaceRail: View {
         case .capture: return nil
         case .today: return model.dailyFocusIssueIDs.count
         case .inbox: return model.inboxMatters.count
-        case .attention: return model.attentionItemCount
+        case .attention: return nil
         case .dropped: return nil
         case .shortcutCapture: return nil
         case .calendar: return nil

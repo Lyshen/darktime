@@ -47,6 +47,15 @@ struct LocalRepoProjectRow: View {
                             .lineLimit(1)
                     }
 
+                    Spacer(minLength: 8)
+                }
+
+                Text(repo.latestCommitSummary ?? "No commits yet")
+                    .font(.system(size: 13, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.muted)
+                    .lineLimit(2)
+
+                HStack(alignment: .center, spacing: 8) {
                     if !issues.isEmpty {
                         ProjectIssueToggle(
                             count: issues.count,
@@ -58,15 +67,6 @@ struct LocalRepoProjectRow: View {
                         }
                     }
 
-                    Spacer(minLength: 8)
-                }
-
-                Text(repo.latestCommitSummary ?? "No commits yet")
-                    .font(.system(size: 13, weight: .regular, design: .default))
-                    .foregroundStyle(DTColor.muted)
-                    .lineLimit(2)
-
-                HStack {
                     Spacer()
                     ZStack(alignment: .trailing) {
                         ProjectActivityMetaGroup(
@@ -196,6 +196,9 @@ private struct ProjectIssueToggle: View {
 }
 
 private struct ProjectIssueLane: View {
+    private static let maxVisibleRows = 5
+    private static let maxVisibleHeight: CGFloat = 190
+
     @ObservedObject var model: DashboardModel
     let issues: [MatterSnapshot]
 
@@ -205,13 +208,19 @@ private struct ProjectIssueLane: View {
                 .padding(.top, 3)
                 .padding(.bottom, 2)
 
-            ForEach(issues, id: \.id) { issue in
-                ProjectInlineIssueRow(model: model, issue: issue)
-                if issue.id != issues.last?.id {
-                    AttentionHairline()
-                        .padding(.leading, 16)
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(issues, id: \.id) { issue in
+                        ProjectInlineIssueRow(model: model, issue: issue)
+                        if issue.id != issues.last?.id {
+                            AttentionHairline()
+                                .padding(.leading, 16)
+                        }
+                    }
                 }
             }
+            .scrollIndicators(issues.count > Self.maxVisibleRows ? .visible : .hidden)
+            .frame(maxHeight: Self.maxVisibleHeight)
         }
     }
 }

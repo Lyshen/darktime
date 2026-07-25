@@ -37,58 +37,71 @@ struct DailyIssuePickerSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Add Issue")
+                Text("Add to Today")
                     .font(.system(size: 15, weight: .semibold, design: .default))
                     .foregroundStyle(DTColor.text)
-                Text("Choose an existing project issue, or create one for today.")
+                Text("Pick one project issue to hold in focus today.")
                     .font(.system(size: 11, weight: .regular, design: .default))
                     .foregroundStyle(DTColor.dimmed)
             }
 
-            if projectGroups.isEmpty {
-                DailyPickerEmptyLine(
-                    title: "No open project issues",
-                    detail: "Create one below."
-                )
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        ForEach(projectGroups) { group in
-                            DailyIssuePickerGroup(
-                                model: model,
-                                group: group,
-                                onPick: {
-                                    dismiss()
-                                }
-                            )
+            VStack(alignment: .leading, spacing: 9) {
+                DailyPickerSectionTitle("Existing")
+
+                if projectGroups.isEmpty {
+                    DailyPickerEmptyLine(
+                        title: "No available issues",
+                        detail: "Open project issues that are not in Today will appear here."
+                    )
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach(projectGroups) { group in
+                                DailyIssuePickerGroup(
+                                    model: model,
+                                    group: group,
+                                    onPick: {
+                                        dismiss()
+                                    }
+                                )
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(minHeight: 140, maxHeight: 260)
                 }
-                .frame(minHeight: 140, maxHeight: 260)
             }
 
             Divider().overlay(DTColor.line.opacity(0.7))
 
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Picker("Project", selection: $selectedProjectId) {
-                        ForEach(model.projects, id: \.id) { project in
-                            Text(project.title).tag(Optional(project.id))
+                DailyPickerSectionTitle("Create")
+
+                if model.projects.isEmpty {
+                    DailyPickerEmptyLine(
+                        title: "No projects yet",
+                        detail: "Add a project in Attention before creating today's issue."
+                    )
+                } else {
+                    HStack(spacing: 8) {
+                        Picker("Project", selection: $selectedProjectId) {
+                            ForEach(model.projects, id: \.id) { project in
+                                Text(project.title).tag(Optional(project.id))
+                            }
                         }
-                    }
-                    .pickerStyle(.menu)
-                    .frame(width: 170, alignment: .leading)
+                        .pickerStyle(.menu)
+                        .frame(width: 170, alignment: .leading)
 
-                    TextField("New issue", text: $newIssueText)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13, weight: .regular, design: .default))
+                        TextField("New issue", text: $newIssueText)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 13, weight: .regular, design: .default))
 
-                    Button("Create") {
-                        create()
+                        Button("Add") {
+                            create()
+                        }
+                        .disabled(!canCreate)
+                        .keyboardShortcut(.defaultAction)
                     }
-                    .disabled(!canCreate)
-                    .keyboardShortcut(.defaultAction)
                 }
 
                 if let errorMessage {
@@ -130,6 +143,20 @@ struct DailyIssuePickerSheet: View {
         } else {
             errorMessage = model.storageError
         }
+    }
+}
+
+private struct DailyPickerSectionTitle: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 12, weight: .medium, design: .default))
+            .foregroundStyle(DTColor.dimmed)
     }
 }
 
