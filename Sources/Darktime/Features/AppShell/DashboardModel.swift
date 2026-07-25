@@ -7,6 +7,7 @@ final class DashboardModel: ObservableObject {
     private static let quickCaptureDraftKey = "darktime.quickCaptureDraft"
     private static let dailyFocusPrefix = "darktime.dailyFocusIssueIDs."
     private static let dailyReflectionPrefix = "darktime.dailyReflection."
+    private static let githubIssuePublishPrefix = "darktime.githubIssuePublish."
 
     @Published var selectedSection: WorkspaceSection = .capture
     @Published var authorizationStatus = "checking"
@@ -252,11 +253,15 @@ final class DashboardModel: ObservableObject {
     }
 
     @discardableResult
-    func createProjectIssue(_ project: ProjectSnapshot, text: String) -> Bool {
+    func createProjectIssue(_ project: ProjectSnapshot, text: String, publishToGitHub: Bool = false) -> Bool {
         do {
-            _ = try MatterRepository.createProjectIssue(project: project, text: text)
+            let issue = try MatterRepository.createProjectIssue(project: project, text: text)
+            let publishError = publishToGitHub ? publishIssueToGitHubIfPossible(issue, project: project) : nil
             selectedSection = .attention
             refresh()
+            if let publishError {
+                storageError = "Created locally. GitHub publish failed: \(publishError.localizedDescription)"
+            }
             return true
         } catch {
             storageReady = false
@@ -266,19 +271,76 @@ final class DashboardModel: ObservableObject {
     }
 
     @discardableResult
-    func createProjectIssueForToday(_ project: ProjectSnapshot, text: String) -> Bool {
+    func createProjectIssueForToday(_ project: ProjectSnapshot, text: String, publishToGitHub: Bool = false) -> Bool {
         do {
             let issue = try MatterRepository.createProjectIssue(project: project, text: text)
+            let publishError = publishToGitHub ? publishIssueToGitHubIfPossible(issue, project: project) : nil
             dailyFocusIssueIDs.insert(issue.id)
             saveDailyFocus()
             selectedSection = .today
             refresh()
+            if let publishError {
+                storageError = "Created locally. GitHub publish failed: \(publishError.localizedDescription)"
+            }
             return true
         } catch {
             storageReady = false
             storageError = String(describing: error)
             return false
         }
+    }
+
+    @discardableResult
+    func publishIssueToGitHub(_ issue: MatterSnapshot) -> Bool {
+        guard let project = project(for: issue) else {
+            storageError = "Issue must belong to a project before publishing."
+            return false
+        }
+
+        do {
+            _ = try MatterRepository.publishIssueToGitHub(issue, project: project)
+            refresh()
+            scheduleLocalRepoActionSync(force: true)
+            return true
+        } catch {
+            storageError = error.localizedDescription
+            return false
+        }
+    }
+
+    func canPublishIssueToGitHub(_ issue: MatterSnapshot) -> Bool {
+        guard issue.status == "issue", issue.issueKind != "github_issue", issue.issueKind != "github_pr" else {
+            return false
+        }
+        guard let project = project(for: issue) else {
+            return false
+        }
+        return canPublishIssuesToGitHub(project)
+    }
+
+    func canPublishIssuesToGitHub(_ project: ProjectSnapshot) -> Bool {
+        guard let localPath = project.localPath else {
+            return false
+        }
+        return LocalGitRepositoryService.githubRepositorySlug(at: localPath) != nil
+    }
+
+    func openExternalIssue(_ issue: MatterSnapshot) {
+        guard
+            let externalUrl = issue.externalUrl,
+            let url = URL(string: externalUrl)
+        else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    func shouldPublishNewIssuesToGitHub(_ project: ProjectSnapshot) -> Bool {
+        UserDefaults.standard.bool(forKey: Self.githubIssuePublishPrefix + project.id)
+    }
+
+    func setShouldPublishNewIssuesToGitHub(_ project: ProjectSnapshot, enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.githubIssuePublishPrefix + project.id)
     }
 
     @discardableResult
@@ -362,6 +424,13 @@ final class DashboardModel: ObservableObject {
             return nil
         }
         return projectTitle(projectId: projectId)
+    }
+
+    func project(for issue: MatterSnapshot) -> ProjectSnapshot? {
+        guard let projectId = issue.projectId else {
+            return nil
+        }
+        return projects.first { $0.id == projectId }
     }
 
     func projectTitle(projectId: String) -> String? {
@@ -587,5 +656,14 @@ final class DashboardModel: ObservableObject {
         authorizationStatus = authorization.status
         canReadWrite = authorization.canReadWrite
         calendars = calendarService.calendarsIfAuthorized()
+    }
+
+    private func publishIssueToGitHubIfPossible(_ issue: MatterSnapshot, project: ProjectSnapshot) -> Error? {
+        do {
+            _ = try MatterRepository.publishIssueToGitHub(issue, project: project)
+            return nil
+        } catch {
+            return error
+        }
     }
 }

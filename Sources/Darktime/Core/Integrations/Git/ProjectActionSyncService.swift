@@ -39,8 +39,9 @@ enum ProjectActionSyncService {
 
     static func sync(projects: [ProjectSnapshot]) throws -> Int {
         let actionCount = try MatterRepository.syncLocalGitActions(projects: projects)
-        let issueCount = try MatterRepository.syncLocalGitPullRequestIssues(projects: projects)
-        return actionCount + issueCount
+        let pullRequestCount = try MatterRepository.syncLocalGitPullRequestIssues(projects: projects)
+        let issueCount = try MatterRepository.syncLocalGitHubIssues(projects: projects)
+        return actionCount + pullRequestCount + issueCount
     }
 
     private static func snapshot(

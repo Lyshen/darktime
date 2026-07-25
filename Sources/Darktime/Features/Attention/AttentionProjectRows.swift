@@ -248,6 +248,16 @@ private struct ProjectInlineIssueRow: View {
                 .opacity(isHovering ? 0 : 1)
 
                 HStack(spacing: 2) {
+                    if issue.externalUrl != nil {
+                        AttentionRowActionButton("Open") {
+                            model.openExternalIssue(issue)
+                        }
+                    }
+                    if model.canPublishIssueToGitHub(issue) {
+                        AttentionRowActionButton("Publish") {
+                            model.publishIssueToGitHub(issue)
+                        }
+                    }
                     AttentionRowActionButton("Edit") {
                         isEditing = true
                     }
@@ -283,7 +293,15 @@ private struct ProjectIssueCreateSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+    @State private var publishToGitHub = false
     @State private var errorMessage: String?
+
+    init(model: DashboardModel, project: ProjectSnapshot, onCreated: @escaping () -> Void) {
+        self.model = model
+        self.project = project
+        self.onCreated = onCreated
+        _publishToGitHub = State(initialValue: model.shouldPublishNewIssuesToGitHub(project))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -304,8 +322,15 @@ private struct ProjectIssueCreateSheet: View {
                 .background(Color.white)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                    .stroke(Color.black.opacity(0.12), lineWidth: 1)
                 )
+
+            if canPublishToGitHub {
+                Toggle("Publish to GitHub", isOn: $publishToGitHub)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.muted)
+            }
 
             if let errorMessage {
                 Text(errorMessage)
@@ -334,13 +359,24 @@ private struct ProjectIssueCreateSheet: View {
     }
 
     private func create() {
-        let ok = model.createProjectIssue(project, text: text)
+        if canPublishToGitHub {
+            model.setShouldPublishNewIssuesToGitHub(project, enabled: publishToGitHub)
+        }
+        let ok = model.createProjectIssue(
+            project,
+            text: text,
+            publishToGitHub: canPublishToGitHub && publishToGitHub
+        )
         if ok {
             onCreated()
             dismiss()
         } else {
             errorMessage = model.storageError
         }
+    }
+
+    private var canPublishToGitHub: Bool {
+        model.canPublishIssuesToGitHub(project)
     }
 }
 

@@ -299,6 +299,90 @@ extension LocalDatabase {
         return stale.count
     }
 
+    static func updateIssueExternalLink(
+        id: String,
+        issueKind: String,
+        externalId: String,
+        externalUrl: String?,
+        externalState: String?
+    ) throws -> MatterSnapshot {
+        let normalizedKind = normalizedIssueKind(issueKind)
+        let trimmedExternalId = externalId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedExternalUrl = normalizedOptional(externalUrl?.trimmingCharacters(in: .whitespacesAndNewlines))
+        let normalizedExternalState = normalizedOptional(externalState?.trimmingCharacters(in: .whitespacesAndNewlines)) ?? "open"
+        guard !trimmedExternalId.isEmpty else {
+            throw StorageError.invalidInput("External issue id cannot be empty.")
+        }
+
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        guard let current = try matter(id: id, db: db) else {
+            throw StorageError.notFound("Matter \(id) was not found.")
+        }
+        guard current.status == "issue" else {
+            throw StorageError.invalidInput("Only issues can be linked to GitHub.")
+        }
+
+        let now = isoNow()
+        try exec("BEGIN TRANSACTION;", db: db)
+        do {
+            try executePrepared(
+                """
+                UPDATE matters
+                SET issue_kind = ?,
+                    external_id = ?,
+                    external_url = ?,
+                    external_state = ?,
+                    updated_at = ?
+                WHERE id = ?;
+                """,
+                values: [
+                    normalizedKind,
+                    trimmedExternalId,
+                    normalizedExternalUrl,
+                    normalizedExternalState,
+                    now,
+                    id
+                ],
+                db: db
+            )
+            try executePrepared(
+                """
+                INSERT INTO matter_logs (
+                  matter_id,
+                  created_at,
+                  action,
+                  from_status,
+                  to_status,
+                  summary
+                ) VALUES (?, ?, 'external_linked', 'issue', 'issue', ?);
+                """,
+                values: [id, now, "Linked issue to \(normalizedKind) \(trimmedExternalId)"],
+                db: db
+            )
+            try exec("COMMIT;", db: db)
+        } catch {
+            try? exec("ROLLBACK;", db: db)
+            throw error
+        }
+
+        return MatterSnapshot(
+            id: current.id,
+            text: current.text,
+            status: current.status,
+            source: current.source,
+            createdAt: current.createdAt,
+            updatedAt: now,
+            rawPayloadJson: current.rawPayloadJson,
+            projectId: current.projectId,
+            issueKind: normalizedKind,
+            externalId: trimmedExternalId,
+            externalUrl: normalizedExternalUrl,
+            externalState: normalizedExternalState
+        )
+    }
+
     static func updateMatterStatus(id: String, status: String) throws -> MatterSnapshot {
         guard matterStatuses.contains(status) else {
             throw StorageError.invalidInput("Unknown matter status '\(status)'.")

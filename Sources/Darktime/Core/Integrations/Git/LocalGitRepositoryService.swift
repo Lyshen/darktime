@@ -18,6 +18,18 @@ struct LocalGitPullRequestIssue: Sendable {
     }
 }
 
+struct LocalGitHubIssue: Sendable {
+    let number: Int
+    let title: String
+    let url: String
+    let state: String
+    let updatedAt: String?
+
+    var externalId: String {
+        "#\(number)"
+    }
+}
+
 enum LocalGitRepositoryService {
     static func resolveRepository(at path: String) throws -> (title: String, rootPath: String) {
         let rootPath = try runGit(
@@ -144,6 +156,82 @@ enum LocalGitRepositoryService {
                     updatedAt: $0.updatedAt
                 )
             }
+    }
+
+    static func openGitHubIssues(repoSlug: String) throws -> [LocalGitHubIssue] {
+        let output = try runTool(
+            executable: "/usr/bin/env",
+            arguments: [
+                "gh",
+                "issue",
+                "list",
+                "--repo",
+                repoSlug,
+                "--state",
+                "open",
+                "--limit",
+                "100",
+                "--json",
+                "number,title,url,state,updatedAt"
+            ],
+            allowFailure: false,
+            timeout: 12
+        )
+
+        struct GHIssue: Decodable {
+            let number: Int
+            let title: String
+            let url: String
+            let state: String
+            let updatedAt: String?
+        }
+
+        return try JSONDecoder().decode([GHIssue].self, from: Data(output.utf8))
+            .map {
+                LocalGitHubIssue(
+                    number: $0.number,
+                    title: $0.title,
+                    url: $0.url,
+                    state: $0.state.lowercased(),
+                    updatedAt: $0.updatedAt
+                )
+            }
+    }
+
+    static func createGitHubIssue(repoSlug: String, title: String) throws -> LocalGitHubIssue {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            throw LocalGitRepositoryError.commandFailed("Issue title cannot be empty.")
+        }
+
+        let output = try runTool(
+            executable: "/usr/bin/env",
+            arguments: [
+                "gh",
+                "issue",
+                "create",
+                "--repo",
+                repoSlug,
+                "--title",
+                trimmedTitle,
+                "--body",
+                ""
+            ],
+            allowFailure: false,
+            timeout: 18
+        )
+        let url = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let number = parseGitHubIssueNumber(url) else {
+            throw LocalGitRepositoryError.commandFailed("GitHub issue was created, but Darktime could not read its number.")
+        }
+
+        return LocalGitHubIssue(
+            number: number,
+            title: trimmedTitle,
+            url: url,
+            state: "open",
+            updatedAt: nil
+        )
     }
 
     private static func currentBranch(at path: String) -> String {
@@ -277,6 +365,21 @@ enum LocalGitRepositoryService {
         }
 
         return nil
+    }
+
+    private static func parseGitHubIssueNumber(_ url: String) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: #"/issues/([0-9]+)(?:$|[/?#])"#) else {
+            return nil
+        }
+        let range = NSRange(url.startIndex..<url.endIndex, in: url)
+        guard
+            let match = regex.firstMatch(in: url, range: range),
+            match.numberOfRanges >= 2,
+            let numberRange = Range(match.range(at: 1), in: url)
+        else {
+            return nil
+        }
+        return Int(url[numberRange])
     }
 
     private static func runGit(arguments: [String], allowFailure: Bool, timeout: TimeInterval = 8) throws -> String {
