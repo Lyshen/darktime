@@ -7,18 +7,22 @@ import SwiftUI
 
 struct DailyFocusWorkspace: View {
     @ObservedObject var model: DashboardModel
+    @State private var isAddingIssue = false
 
-    private var candidateIssues: [MatterSnapshot] {
-        model.issueMatters
+    private var openProjectIssues: [MatterSnapshot] {
+        model.projectIssueMatters
             .filter { $0.externalState?.lowercased() != "closed" }
-            .sorted { left, right in
-                let leftFocused = model.isDailyFocus(left)
-                let rightFocused = model.isDailyFocus(right)
-                if leftFocused != rightFocused {
-                    return leftFocused
-                }
-                return left.updatedAt > right.updatedAt
-            }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var focusIssues: [MatterSnapshot] {
+        openProjectIssues
+            .filter { model.isDailyFocus($0) }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var addableIssues: [MatterSnapshot] {
+        openProjectIssues.filter { !model.isDailyFocus($0) }
     }
 
     private var todayActions: [ActionSnapshot] {
@@ -42,8 +46,12 @@ struct DailyFocusWorkspace: View {
     var body: some View {
         VStack(spacing: 0) {
             DailyFocusHeader(
-                focusCount: model.dailyFocusIssueIDs.count,
+                focusCount: focusIssues.count,
                 actionCount: todayActions.count,
+                canClear: !focusIssues.isEmpty,
+                onAdd: {
+                    isAddingIssue = true
+                },
                 onClear: model.clearDailyFocus
             )
             Divider().overlay(DTColor.line.opacity(0.7))
@@ -51,21 +59,20 @@ struct DailyFocusWorkspace: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     DailyFocusSectionTitle("Focus")
-                    if candidateIssues.isEmpty {
+                    if focusIssues.isEmpty {
                         DailyEmptyLine(
                             systemImage: "circle.dotted",
-                            title: "No issues yet",
-                            detail: "Create project issues from Attention to plan the day."
+                            title: "No issues selected",
+                            detail: "Add a few project issues for today."
                         )
                     } else {
                         VStack(spacing: 0) {
-                            ForEach(candidateIssues, id: \.id) { issue in
+                            ForEach(focusIssues, id: \.id) { issue in
                                 DailyIssueFocusRow(
                                     model: model,
-                                    issue: issue,
-                                    isFocused: model.isDailyFocus(issue)
+                                    issue: issue
                                 )
-                                if issue.id != candidateIssues.last?.id {
+                                if issue.id != focusIssues.last?.id {
                                     DailyHairline()
                                 }
                             }
@@ -98,6 +105,9 @@ struct DailyFocusWorkspace: View {
             }
         }
         .background(DTColor.workspace)
+        .sheet(isPresented: $isAddingIssue) {
+            DailyIssuePickerSheet(model: model, issues: addableIssues)
+        }
     }
 }
 
@@ -116,6 +126,8 @@ private struct DailyActionProjectSection: Identifiable {
 private struct DailyFocusHeader: View {
     let focusCount: Int
     let actionCount: Int
+    let canClear: Bool
+    let onAdd: () -> Void
     let onClear: () -> Void
 
     var body: some View {
@@ -132,7 +144,10 @@ private struct DailyFocusHeader: View {
                 .foregroundStyle(DTColor.muted)
                 .lineLimit(1)
             Spacer()
-            QuietHeaderButton("Clear Focus", isEnabled: focusCount > 0) {
+            QuietHeaderButton("Add Issue") {
+                onAdd()
+            }
+            QuietHeaderButton("Clear Focus", isEnabled: canClear) {
                 onClear()
             }
         }
@@ -145,18 +160,17 @@ private struct DailyFocusHeader: View {
 private struct DailyIssueFocusRow: View {
     @ObservedObject var model: DashboardModel
     let issue: MatterSnapshot
-    let isFocused: Bool
 
     @State private var isHovered = false
 
     var body: some View {
         Button {
-            model.toggleDailyFocus(issue)
+            model.removeIssueFromDailyFocus(issue)
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: isFocused ? "checkmark.circle.fill" : "circle")
+                Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(isFocused ? DTColor.green : DTColor.dimmed)
+                    .foregroundStyle(DTColor.green)
                     .frame(width: 18)
                     .padding(.top, 2)
 
@@ -194,6 +208,7 @@ private struct DailyIssueFocusRow: View {
             )
         }
         .buttonStyle(.plain)
+        .help("Remove from Today")
         .onHover { hovering in
             isHovered = hovering
         }
@@ -348,7 +363,7 @@ private struct DailyEmptyLine: View {
     }
 }
 
-private struct DailyHairline: View {
+struct DailyHairline: View {
     var body: some View {
         Rectangle()
             .fill(Color.black.opacity(0.055))
