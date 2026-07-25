@@ -8,6 +8,7 @@ final class DashboardModel: ObservableObject {
     private static let dailyFocusPrefix = "darktime.dailyFocusIssueIDs."
     private static let dailyReflectionPrefix = "darktime.dailyReflection."
     private static let githubIssuePublishPrefix = "darktime.githubIssuePublish."
+    private static let githubIssueFilterPrefix = "darktime.githubIssueFilter."
 
     @Published var selectedSection: WorkspaceSection = .capture
     @Published var authorizationStatus = "checking"
@@ -343,6 +344,21 @@ final class DashboardModel: ObservableObject {
         UserDefaults.standard.set(enabled, forKey: Self.githubIssuePublishPrefix + project.id)
     }
 
+    func githubIssueSyncFilter(for project: ProjectSnapshot) -> GitHubIssueSyncFilter {
+        guard
+            let rawValue = UserDefaults.standard.string(forKey: Self.githubIssueFilterPrefix + project.id),
+            let filter = GitHubIssueSyncFilter(rawValue: rawValue)
+        else {
+            return .assignedToMe
+        }
+        return filter
+    }
+
+    func setGitHubIssueSyncFilter(_ project: ProjectSnapshot, filter: GitHubIssueSyncFilter) {
+        UserDefaults.standard.set(filter.rawValue, forKey: Self.githubIssueFilterPrefix + project.id)
+        scheduleLocalRepoActionSync(force: true)
+    }
+
     @discardableResult
     func attachIssue(_ issue: MatterSnapshot, to project: ProjectSnapshot) -> Bool {
         do {
@@ -613,10 +629,14 @@ final class DashboardModel: ObservableObject {
         actionSyncError = nil
         let projectsToSync = repoProjects
         let projectIDsToSync = Set(repoProjects.map(\.id))
-        localRepoActionSyncTask = Task { [weak self, projectsToSync] in
+        let githubIssueFilters = githubIssueFiltersByProject(projectsToSync)
+        localRepoActionSyncTask = Task { [weak self, projectsToSync, githubIssueFilters] in
             let result = await Task.detached(priority: .utility) {
                 Result {
-                    try ProjectActionSyncService.sync(projects: projectsToSync)
+                    try ProjectActionSyncService.sync(
+                        projects: projectsToSync,
+                        githubIssueFiltersByProject: githubIssueFilters
+                    )
                 }
             }.value
 
@@ -639,6 +659,12 @@ final class DashboardModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func githubIssueFiltersByProject(_ projects: [ProjectSnapshot]) -> [String: GitHubIssueSyncFilter] {
+        Dictionary(uniqueKeysWithValues: projects.map { project in
+            (project.id, githubIssueSyncFilter(for: project))
+        })
     }
 
     private func refreshShortcutCounts() {

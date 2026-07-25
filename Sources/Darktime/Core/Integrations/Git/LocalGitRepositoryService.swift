@@ -30,6 +30,23 @@ struct LocalGitHubIssue: Sendable {
     }
 }
 
+enum GitHubIssueSyncFilter: String, CaseIterable, Hashable, Sendable {
+    case assignedToMe = "assigned_to_me"
+    case createdByMe = "created_by_me"
+    case allOpen = "all_open"
+
+    var title: String {
+        switch self {
+        case .assignedToMe:
+            return "Assigned to me"
+        case .createdByMe:
+            return "Created by me"
+        case .allOpen:
+            return "All open issues"
+        }
+    }
+}
+
 enum LocalGitRepositoryService {
     static func resolveRepository(at path: String) throws -> (title: String, rootPath: String) {
         let rootPath = try runGit(
@@ -160,25 +177,41 @@ enum LocalGitRepositoryService {
             }
     }
 
-    static func openGitHubIssues(repoSlug: String) throws -> [LocalGitHubIssue] {
+    static func openGitHubIssues(repoSlug: String, filter: GitHubIssueSyncFilter = .assignedToMe) throws -> [LocalGitHubIssue] {
+        var arguments = [
+            "gh",
+            "issue",
+            "list",
+            "--repo",
+            repoSlug,
+            "--state",
+            "open"
+        ]
+        switch filter {
+        case .assignedToMe:
+            arguments.append(contentsOf: ["--assignee", "@me"])
+        case .createdByMe:
+            arguments.append(contentsOf: ["--author", "@me"])
+        case .allOpen:
+            break
+        }
+        arguments.append(contentsOf: [
+            "--limit",
+            "100",
+            "--json",
+            "number,title,url,state,updatedAt,assignees,author"
+        ])
+
         let output = try runTool(
             executable: "/usr/bin/env",
-            arguments: [
-                "gh",
-                "issue",
-                "list",
-                "--repo",
-                repoSlug,
-                "--state",
-                "open",
-                "--limit",
-                "100",
-                "--json",
-                "number,title,url,state,updatedAt"
-            ],
+            arguments: arguments,
             allowFailure: false,
             timeout: 12
         )
+
+        struct GHUser: Decodable {
+            let login: String
+        }
 
         struct GHIssue: Decodable {
             let number: Int
@@ -186,9 +219,28 @@ enum LocalGitRepositoryService {
             let url: String
             let state: String
             let updatedAt: String?
+            let assignees: [GHUser]?
+            let author: GHUser?
         }
 
-        return try JSONDecoder().decode([GHIssue].self, from: Data(output.utf8))
+        let currentLogin = currentGitHubLogin()
+        let issues = try JSONDecoder().decode([GHIssue].self, from: Data(output.utf8))
+        return issues
+            .filter { issue in
+                guard let currentLogin else {
+                    return true
+                }
+                switch filter {
+                case .assignedToMe:
+                    return issue.assignees?.contains { assignee in
+                        assignee.login.caseInsensitiveCompare(currentLogin) == .orderedSame
+                    } ?? false
+                case .createdByMe:
+                    return issue.author?.login.caseInsensitiveCompare(currentLogin) == .orderedSame
+                case .allOpen:
+                    return true
+                }
+            }
             .map {
                 LocalGitHubIssue(
                     number: $0.number,
@@ -384,6 +436,17 @@ enum LocalGitRepositoryService {
             return nil
         }
         return Int(url[numberRange])
+    }
+
+    private static func currentGitHubLogin() -> String? {
+        let output = try? runTool(
+            executable: "/usr/bin/env",
+            arguments: ["gh", "api", "user", "--jq", ".login"],
+            allowFailure: true,
+            timeout: 8
+        )
+        let login = output?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return login.isEmpty ? nil : login
     }
 
     private static func runGit(arguments: [String], allowFailure: Bool, timeout: TimeInterval = 8) throws -> String {

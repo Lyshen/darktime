@@ -37,7 +37,7 @@ Capture
                   -> Action
 ```
 
-当前 MVP 已支持手动 Project Issue，并能通过 `gh` CLI 把本地 repo 中 assigned to me 的 open GitHub Issues 同步为 `Issue(kind: github_issue)`，把 open PR 同步为 `Issue(kind: github_pr)`。本地 Issue 发布到 GitHub 时会默认 assign 给自己。
+当前 MVP 已支持手动 Project Issue，并能通过 `gh` CLI 把本地 repo 中的 open GitHub Issues 同步为 `Issue(kind: github_issue)`，把 open PR 同步为 `Issue(kind: github_pr)`。GitHub Issue 同步默认只看 `Assigned to me`，Project 可改为 `Created by me` 或 `All open issues`。本地 Issue 发布到 GitHub 时会默认 assign 给自己。
 
 ## 关键解释
 
@@ -76,7 +76,7 @@ empty    -> 还没有 Action
 - Capture / Inbox / Clear。
 - Issue 列表、编辑、丢弃、转 Project。
 - Project 下的手动 Issue。
-- Assigned to me 的 GitHub open issues 自动导入为 `github_issue` Issue。
+- GitHub open issues 自动导入为 `github_issue` Issue，默认只同步 Assigned to me。
 - 本地 Issue 可发布为 GitHub Issue，并默认 assign 给自己。
 - 本地 git repo Project。
 - 本地 repo 的 open PR 自动导入为 `github_pr` Issue。

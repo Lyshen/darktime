@@ -235,8 +235,18 @@ extension LocalDatabase {
         )
     }
 
-    static func closeMissingExternalIssues(projectId: String, issueKind: String, activeExternalIds: Set<String>) throws -> Int {
+    static func closeMissingExternalIssues(
+        projectId: String,
+        issueKind: String,
+        activeExternalIds: Set<String>,
+        missingExternalState: String = "closed",
+        logAction: String = "external_closed",
+        summary: String = "External issue is no longer open"
+    ) throws -> Int {
         let normalizedKind = normalizedIssueKind(issueKind)
+        let normalizedMissingState = normalizedOptional(missingExternalState.trimmingCharacters(in: .whitespacesAndNewlines)) ?? "closed"
+        let normalizedLogAction = normalizedOptional(logAction.trimmingCharacters(in: .whitespacesAndNewlines)) ?? "external_closed"
+        let normalizedSummary = normalizedOptional(summary.trimmingCharacters(in: .whitespacesAndNewlines)) ?? "External issue is no longer open"
         let db = try openDatabase()
         defer { sqlite3_close(db) }
 
@@ -269,10 +279,10 @@ extension LocalDatabase {
                 try executePrepared(
                     """
                     UPDATE matters
-                    SET status = 'done', external_state = 'closed', updated_at = ?
+                    SET status = 'done', external_state = ?, updated_at = ?
                     WHERE id = ?;
                     """,
-                    values: [now, issue.id],
+                    values: [normalizedMissingState, now, issue.id],
                     db: db
                 )
                 try executePrepared(
@@ -284,9 +294,9 @@ extension LocalDatabase {
                       from_status,
                       to_status,
                       summary
-                    ) VALUES (?, ?, 'external_closed', 'issue', 'done', ?);
+                    ) VALUES (?, ?, ?, 'issue', 'done', ?);
                     """,
-                    values: [issue.id, now, "External issue is no longer open"],
+                    values: [issue.id, now, normalizedLogAction, normalizedSummary],
                     db: db
                 )
             }

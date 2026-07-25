@@ -184,7 +184,10 @@ enum MatterRepository {
     }
 
     @discardableResult
-    static func syncLocalGitHubIssues(projects: [ProjectSnapshot]) throws -> Int {
+    static func syncLocalGitHubIssues(
+        projects: [ProjectSnapshot],
+        filtersByProject: [String: GitHubIssueSyncFilter] = [:]
+    ) throws -> Int {
         var changedCount = 0
 
         for project in projects {
@@ -196,7 +199,11 @@ enum MatterRepository {
             }
 
             do {
-                let githubIssues = try LocalGitRepositoryService.openGitHubIssues(repoSlug: repoSlug)
+                let filter = filtersByProject[project.id] ?? .assignedToMe
+                let githubIssues = try LocalGitRepositoryService.openGitHubIssues(
+                    repoSlug: repoSlug,
+                    filter: filter
+                )
                 for githubIssue in githubIssues {
                     _ = try LocalDatabase.upsertProjectIssue(
                         projectId: project.id,
@@ -212,7 +219,10 @@ enum MatterRepository {
                 changedCount += try LocalDatabase.closeMissingExternalIssues(
                     projectId: project.id,
                     issueKind: "github_issue",
-                    activeExternalIds: Set(githubIssues.map(\.externalId))
+                    activeExternalIds: Set(githubIssues.map(\.externalId)),
+                    missingExternalState: "out_of_scope",
+                    logAction: "external_filtered",
+                    summary: "GitHub issue is outside the current sync filter"
                 )
             } catch {
                 continue

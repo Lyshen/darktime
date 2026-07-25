@@ -433,6 +433,7 @@ private struct ProjectEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var title: String
     @State private var intention: String
+    @State private var githubIssueFilter: GitHubIssueSyncFilter
     @State private var errorMessage: String?
 
     init(model: DashboardModel, project: ProjectSnapshot) {
@@ -440,6 +441,7 @@ private struct ProjectEditSheet: View {
         self.project = project
         _title = State(initialValue: project.title)
         _intention = State(initialValue: project.intention ?? "")
+        _githubIssueFilter = State(initialValue: model.githubIssueSyncFilter(for: project))
     }
 
     var body: some View {
@@ -469,6 +471,25 @@ private struct ProjectEditSheet: View {
                         RoundedRectangle(cornerRadius: 6)
                             .stroke(Color.black.opacity(0.12), lineWidth: 1)
                     )
+            }
+
+            if canSyncGitHubIssues {
+                HStack(spacing: 10) {
+                    Text("GitHub Issues")
+                        .font(.system(size: 12, weight: .regular, design: .default))
+                        .foregroundStyle(DTColor.muted)
+
+                    Spacer()
+
+                    Picker("", selection: $githubIssueFilter) {
+                        ForEach(GitHubIssueSyncFilter.allCases, id: \.self) { filter in
+                            Text(filter.title).tag(filter)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 160, alignment: .trailing)
+                }
             }
 
             if let errorMessage {
@@ -504,10 +525,17 @@ private struct ProjectEditSheet: View {
             intention: intention
         )
         if ok {
+            if canSyncGitHubIssues {
+                model.setGitHubIssueSyncFilter(project, filter: githubIssueFilter)
+            }
             dismiss()
         } else {
             errorMessage = model.storageError
         }
+    }
+
+    private var canSyncGitHubIssues: Bool {
+        model.canPublishIssuesToGitHub(project)
     }
 }
 
