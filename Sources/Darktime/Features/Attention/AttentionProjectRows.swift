@@ -47,6 +47,16 @@ struct LocalRepoProjectRow: View {
                             .lineLimit(1)
                     }
 
+                    Spacer(minLength: 8)
+                }
+
+                Text(repo.latestCommitSummary ?? "No commits yet")
+                    .font(.system(size: 13, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.muted)
+                    .lineLimit(2)
+
+                HStack(spacing: 6) {
+                    Spacer()
                     if !issues.isEmpty {
                         ProjectIssueToggle(
                             count: issues.count,
@@ -57,17 +67,6 @@ struct LocalRepoProjectRow: View {
                             }
                         }
                     }
-
-                    Spacer(minLength: 8)
-                }
-
-                Text(repo.latestCommitSummary ?? "No commits yet")
-                    .font(.system(size: 13, weight: .regular, design: .default))
-                    .foregroundStyle(DTColor.muted)
-                    .lineLimit(2)
-
-                HStack {
-                    Spacer()
                     ZStack(alignment: .trailing) {
                         ProjectActivityMetaGroup(
                             time: timeSummary,
