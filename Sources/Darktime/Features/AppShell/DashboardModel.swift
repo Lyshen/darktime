@@ -266,6 +266,22 @@ final class DashboardModel: ObservableObject {
     }
 
     @discardableResult
+    func createProjectIssueForToday(_ project: ProjectSnapshot, text: String) -> Bool {
+        do {
+            let issue = try MatterRepository.createProjectIssue(project: project, text: text)
+            dailyFocusIssueIDs.insert(issue.id)
+            saveDailyFocus()
+            selectedSection = .today
+            refresh()
+            return true
+        } catch {
+            storageReady = false
+            storageError = String(describing: error)
+            return false
+        }
+    }
+
+    @discardableResult
     func attachIssue(_ issue: MatterSnapshot, to project: ProjectSnapshot) -> Bool {
         do {
             _ = try MatterRepository.attachIssue(issue, to: project)
@@ -362,6 +378,16 @@ final class DashboardModel: ObservableObject {
         } else {
             dailyFocusIssueIDs.insert(issue.id)
         }
+        saveDailyFocus()
+    }
+
+    func addIssueToDailyFocus(_ issue: MatterSnapshot) {
+        dailyFocusIssueIDs.insert(issue.id)
+        saveDailyFocus()
+    }
+
+    func removeIssueFromDailyFocus(_ issue: MatterSnapshot) {
+        dailyFocusIssueIDs.remove(issue.id)
         saveDailyFocus()
     }
 
