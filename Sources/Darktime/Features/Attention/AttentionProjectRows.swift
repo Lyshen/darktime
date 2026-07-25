@@ -47,6 +47,15 @@ struct LocalRepoProjectRow: View {
                             .lineLimit(1)
                     }
 
+                    Spacer(minLength: 8)
+                }
+
+                Text(repo.latestCommitSummary ?? "No commits yet")
+                    .font(.system(size: 13, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.muted)
+                    .lineLimit(2)
+
+                HStack(spacing: 8) {
                     if !issues.isEmpty {
                         ProjectIssueToggle(
                             count: issues.count,
@@ -57,16 +66,6 @@ struct LocalRepoProjectRow: View {
                             }
                         }
                     }
-
-                    Spacer(minLength: 8)
-                }
-
-                Text(repo.latestCommitSummary ?? "No commits yet")
-                    .font(.system(size: 13, weight: .regular, design: .default))
-                    .foregroundStyle(DTColor.muted)
-                    .lineLimit(2)
-
-                HStack {
                     Spacer()
                     ZStack(alignment: .trailing) {
                         ProjectActivityMetaGroup(
@@ -248,6 +247,16 @@ private struct ProjectInlineIssueRow: View {
                 .opacity(isHovering ? 0 : 1)
 
                 HStack(spacing: 2) {
+                    if issue.externalUrl != nil {
+                        AttentionRowActionButton("Open") {
+                            model.openExternalIssue(issue)
+                        }
+                    }
+                    if model.canPublishIssueToGitHub(issue) {
+                        AttentionRowActionButton("Publish") {
+                            model.publishIssueToGitHub(issue)
+                        }
+                    }
                     AttentionRowActionButton("Edit") {
                         isEditing = true
                     }
@@ -283,7 +292,15 @@ private struct ProjectIssueCreateSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+    @State private var publishToGitHub = false
     @State private var errorMessage: String?
+
+    init(model: DashboardModel, project: ProjectSnapshot, onCreated: @escaping () -> Void) {
+        self.model = model
+        self.project = project
+        self.onCreated = onCreated
+        _publishToGitHub = State(initialValue: model.shouldPublishNewIssuesToGitHub(project))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -304,8 +321,15 @@ private struct ProjectIssueCreateSheet: View {
                 .background(Color.white)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                    .stroke(Color.black.opacity(0.12), lineWidth: 1)
                 )
+
+            if canPublishToGitHub {
+                Toggle("Publish to GitHub", isOn: $publishToGitHub)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.muted)
+            }
 
             if let errorMessage {
                 Text(errorMessage)
@@ -334,13 +358,24 @@ private struct ProjectIssueCreateSheet: View {
     }
 
     private func create() {
-        let ok = model.createProjectIssue(project, text: text)
+        if canPublishToGitHub {
+            model.setShouldPublishNewIssuesToGitHub(project, enabled: publishToGitHub)
+        }
+        let ok = model.createProjectIssue(
+            project,
+            text: text,
+            publishToGitHub: canPublishToGitHub && publishToGitHub
+        )
         if ok {
             onCreated()
             dismiss()
         } else {
             errorMessage = model.storageError
         }
+    }
+
+    private var canPublishToGitHub: Bool {
+        model.canPublishIssuesToGitHub(project)
     }
 }
 
@@ -397,6 +432,7 @@ private struct ProjectEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var title: String
     @State private var intention: String
+    @State private var githubIssueFilter: GitHubIssueSyncFilter
     @State private var errorMessage: String?
 
     init(model: DashboardModel, project: ProjectSnapshot) {
@@ -404,6 +440,7 @@ private struct ProjectEditSheet: View {
         self.project = project
         _title = State(initialValue: project.title)
         _intention = State(initialValue: project.intention ?? "")
+        _githubIssueFilter = State(initialValue: model.githubIssueSyncFilter(for: project))
     }
 
     var body: some View {
@@ -433,6 +470,25 @@ private struct ProjectEditSheet: View {
                         RoundedRectangle(cornerRadius: 6)
                             .stroke(Color.black.opacity(0.12), lineWidth: 1)
                     )
+            }
+
+            if canSyncGitHubIssues {
+                HStack(spacing: 10) {
+                    Text("GitHub Issues")
+                        .font(.system(size: 12, weight: .regular, design: .default))
+                        .foregroundStyle(DTColor.muted)
+
+                    Spacer()
+
+                    Picker("", selection: $githubIssueFilter) {
+                        ForEach(GitHubIssueSyncFilter.allCases, id: \.self) { filter in
+                            Text(filter.title).tag(filter)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 160, alignment: .trailing)
+                }
             }
 
             if let errorMessage {
@@ -468,10 +524,17 @@ private struct ProjectEditSheet: View {
             intention: intention
         )
         if ok {
+            if canSyncGitHubIssues {
+                model.setGitHubIssueSyncFilter(project, filter: githubIssueFilter)
+            }
             dismiss()
         } else {
             errorMessage = model.storageError
         }
+    }
+
+    private var canSyncGitHubIssues: Bool {
+        model.canPublishIssuesToGitHub(project)
     }
 }
 

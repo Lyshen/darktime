@@ -33,7 +33,7 @@ Capture
                   -> Action
 ```
 
-The current MVP supports manual Project Issues and can import open PRs from local repos as `Issue(kind: github_pr)` through `gh` CLI. Future GitHub Issue sync will use the same Issue model.
+The current MVP supports manual Project Issues and can import open GitHub Issues from local repos as `Issue(kind: github_issue)` and open PRs as `Issue(kind: github_pr)` through `gh` CLI. GitHub Issue sync defaults to `Assigned to me`, and each Project can opt into `Created by me` or `All open issues`. Local Issues published to GitHub are assigned to the current user by default.
 
 ## Key Meanings
 
@@ -72,6 +72,8 @@ In:
 - Capture / Inbox / Clear.
 - Issue list, edit, drop, and make Project.
 - Manual Project Issues.
+- GitHub open issues imported as `github_issue` Issues, defaulting to Assigned to me.
+- Local Issues published as GitHub Issues and assigned to the current user by default.
 - Local git repo Projects.
 - Open PRs from local repos imported as `github_pr` Issues.
 - Commits imported as Actions.

@@ -53,6 +53,16 @@ struct IssueRow: View {
                             AttentionRowActionButton("Edit") {
                                 isEditing = true
                             }
+                            if matter.externalUrl != nil {
+                                AttentionRowActionButton("Open") {
+                                    model.openExternalIssue(matter)
+                                }
+                            }
+                            if model.canPublishIssueToGitHub(matter) {
+                                AttentionRowActionButton("Publish") {
+                                    model.publishIssueToGitHub(matter)
+                                }
+                            }
                             if matter.projectId == nil {
                                 AttentionRowActionButton("Attach") {
                                     isAttaching = true

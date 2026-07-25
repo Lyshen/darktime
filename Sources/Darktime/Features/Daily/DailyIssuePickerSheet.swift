@@ -7,12 +7,17 @@ struct DailyIssuePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedProjectId: String?
     @State private var newIssueText = ""
+    @State private var publishNewIssueToGitHub = false
     @State private var errorMessage: String?
 
     init(model: DashboardModel, issues: [MatterSnapshot]) {
         self.model = model
         self.issues = issues
-        _selectedProjectId = State(initialValue: model.projects.first?.id)
+        let initialProject = model.projects.first
+        _selectedProjectId = State(initialValue: initialProject?.id)
+        _publishNewIssueToGitHub = State(
+            initialValue: initialProject.map { model.shouldPublishNewIssuesToGitHub($0) } ?? false
+        )
     }
 
     private var projectGroups: [DailyIssueProjectGroup] {
@@ -91,6 +96,13 @@ struct DailyIssuePickerSheet: View {
                     .keyboardShortcut(.defaultAction)
                 }
 
+                if selectedProjectCanPublishToGitHub {
+                    Toggle("Publish to GitHub", isOn: $publishNewIssueToGitHub)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 12, weight: .regular, design: .default))
+                        .foregroundStyle(DTColor.muted)
+                }
+
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.system(size: 11, weight: .regular, design: .default))
@@ -110,26 +122,54 @@ struct DailyIssuePickerSheet: View {
         .padding(22)
         .frame(width: 560)
         .background(DTColor.workspace)
+        .onChange(of: selectedProjectId) { projectId in
+            guard
+                let projectId,
+                let project = model.projects.first(where: { $0.id == projectId })
+            else {
+                publishNewIssueToGitHub = false
+                return
+            }
+            publishNewIssueToGitHub = model.shouldPublishNewIssuesToGitHub(project)
+        }
     }
 
     private var canCreate: Bool {
         selectedProjectId != nil && !newIssueText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var selectedProjectCanPublishToGitHub: Bool {
+        guard let project = selectedProject else {
+            return false
+        }
+        return model.canPublishIssuesToGitHub(project)
+    }
+
     private func create() {
-        guard
-            let selectedProjectId,
-            let project = model.projects.first(where: { $0.id == selectedProjectId })
-        else {
+        guard let project = selectedProject else {
             return
         }
 
-        let ok = model.createProjectIssueForToday(project, text: newIssueText)
+        if selectedProjectCanPublishToGitHub {
+            model.setShouldPublishNewIssuesToGitHub(project, enabled: publishNewIssueToGitHub)
+        }
+        let ok = model.createProjectIssueForToday(
+            project,
+            text: newIssueText,
+            publishToGitHub: selectedProjectCanPublishToGitHub && publishNewIssueToGitHub
+        )
         if ok {
             dismiss()
         } else {
             errorMessage = model.storageError
         }
+    }
+
+    private var selectedProject: ProjectSnapshot? {
+        guard let selectedProjectId else {
+            return nil
+        }
+        return model.projects.first { $0.id == selectedProjectId }
     }
 }
 

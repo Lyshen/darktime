@@ -18,6 +18,35 @@ struct LocalGitPullRequestIssue: Sendable {
     }
 }
 
+struct LocalGitHubIssue: Sendable {
+    let number: Int
+    let title: String
+    let url: String
+    let state: String
+    let updatedAt: String?
+
+    var externalId: String {
+        "#\(number)"
+    }
+}
+
+enum GitHubIssueSyncFilter: String, CaseIterable, Hashable, Sendable {
+    case assignedToMe = "assigned_to_me"
+    case createdByMe = "created_by_me"
+    case allOpen = "all_open"
+
+    var title: String {
+        switch self {
+        case .assignedToMe:
+            return "Assigned to me"
+        case .createdByMe:
+            return "Created by me"
+        case .allOpen:
+            return "All open issues"
+        }
+    }
+}
+
 enum LocalGitRepositoryService {
     static func resolveRepository(at path: String) throws -> (title: String, rootPath: String) {
         let rootPath = try runGit(
@@ -117,6 +146,8 @@ enum LocalGitRepositoryService {
                 repoSlug,
                 "--state",
                 "open",
+                "--assignee",
+                "@me",
                 "--limit",
                 "100",
                 "--json",
@@ -144,6 +175,119 @@ enum LocalGitRepositoryService {
                     updatedAt: $0.updatedAt
                 )
             }
+    }
+
+    static func openGitHubIssues(repoSlug: String, filter: GitHubIssueSyncFilter = .assignedToMe) throws -> [LocalGitHubIssue] {
+        var arguments = [
+            "gh",
+            "issue",
+            "list",
+            "--repo",
+            repoSlug,
+            "--state",
+            "open"
+        ]
+        switch filter {
+        case .assignedToMe:
+            arguments.append(contentsOf: ["--assignee", "@me"])
+        case .createdByMe:
+            arguments.append(contentsOf: ["--author", "@me"])
+        case .allOpen:
+            break
+        }
+        arguments.append(contentsOf: [
+            "--limit",
+            "100",
+            "--json",
+            "number,title,url,state,updatedAt,assignees,author"
+        ])
+
+        let output = try runTool(
+            executable: "/usr/bin/env",
+            arguments: arguments,
+            allowFailure: false,
+            timeout: 12
+        )
+
+        struct GHUser: Decodable {
+            let login: String
+        }
+
+        struct GHIssue: Decodable {
+            let number: Int
+            let title: String
+            let url: String
+            let state: String
+            let updatedAt: String?
+            let assignees: [GHUser]?
+            let author: GHUser?
+        }
+
+        let currentLogin = currentGitHubLogin()
+        let issues = try JSONDecoder().decode([GHIssue].self, from: Data(output.utf8))
+        return issues
+            .filter { issue in
+                guard let currentLogin else {
+                    return true
+                }
+                switch filter {
+                case .assignedToMe:
+                    return issue.assignees?.contains { assignee in
+                        assignee.login.caseInsensitiveCompare(currentLogin) == .orderedSame
+                    } ?? false
+                case .createdByMe:
+                    return issue.author?.login.caseInsensitiveCompare(currentLogin) == .orderedSame
+                case .allOpen:
+                    return true
+                }
+            }
+            .map {
+                LocalGitHubIssue(
+                    number: $0.number,
+                    title: $0.title,
+                    url: $0.url,
+                    state: $0.state.lowercased(),
+                    updatedAt: $0.updatedAt
+                )
+            }
+    }
+
+    static func createGitHubIssue(repoSlug: String, title: String) throws -> LocalGitHubIssue {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            throw LocalGitRepositoryError.commandFailed("Issue title cannot be empty.")
+        }
+
+        let output = try runTool(
+            executable: "/usr/bin/env",
+            arguments: [
+                "gh",
+                "issue",
+                "create",
+                "--repo",
+                repoSlug,
+                "--title",
+                trimmedTitle,
+                "--body",
+                "",
+                "--assignee",
+                "@me"
+            ],
+            allowFailure: false,
+            timeout: 18
+        )
+        let url = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let number = parseGitHubIssueNumber(url) else {
+            throw LocalGitRepositoryError.commandFailed("GitHub issue was created, but Darktime could not read its number.")
+        }
+
+        return LocalGitHubIssue(
+            number: number,
+            title: trimmedTitle,
+            url: url,
+            state: "open",
+            updatedAt: nil
+        )
     }
 
     private static func currentBranch(at path: String) -> String {
@@ -277,6 +421,32 @@ enum LocalGitRepositoryService {
         }
 
         return nil
+    }
+
+    private static func parseGitHubIssueNumber(_ url: String) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: #"/issues/([0-9]+)(?:$|[/?#])"#) else {
+            return nil
+        }
+        let range = NSRange(url.startIndex..<url.endIndex, in: url)
+        guard
+            let match = regex.firstMatch(in: url, range: range),
+            match.numberOfRanges >= 2,
+            let numberRange = Range(match.range(at: 1), in: url)
+        else {
+            return nil
+        }
+        return Int(url[numberRange])
+    }
+
+    private static func currentGitHubLogin() -> String? {
+        let output = try? runTool(
+            executable: "/usr/bin/env",
+            arguments: ["gh", "api", "user", "--jq", ".login"],
+            allowFailure: true,
+            timeout: 8
+        )
+        let login = output?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return login.isEmpty ? nil : login
     }
 
     private static func runGit(arguments: [String], allowFailure: Bool, timeout: TimeInterval = 8) throws -> String {

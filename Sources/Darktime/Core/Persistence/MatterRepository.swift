@@ -55,6 +55,36 @@ enum MatterRepository {
         try LocalDatabase.createProjectIssue(projectId: project.id, text: text)
     }
 
+    static func publishIssueToGitHub(_ issue: MatterSnapshot, project: ProjectSnapshot) throws -> MatterSnapshot {
+        guard issue.status == "issue" else {
+            throw StorageError.invalidInput("Only issues can be published to GitHub.")
+        }
+        guard issue.projectId == project.id else {
+            throw StorageError.invalidInput("Issue must belong to this project before publishing.")
+        }
+        if issue.issueKind == "github_issue", issue.externalUrl != nil {
+            return issue
+        }
+        guard let localPath = project.localPath else {
+            throw StorageError.invalidInput("Only local repo projects can publish GitHub issues.")
+        }
+        guard let repoSlug = LocalGitRepositoryService.githubRepositorySlug(at: localPath) else {
+            throw StorageError.invalidInput("This project does not have a GitHub origin remote.")
+        }
+
+        let githubIssue = try LocalGitRepositoryService.createGitHubIssue(
+            repoSlug: repoSlug,
+            title: issue.text
+        )
+        return try LocalDatabase.updateIssueExternalLink(
+            id: issue.id,
+            issueKind: "github_issue",
+            externalId: githubIssue.externalId,
+            externalUrl: githubIssue.url,
+            externalState: githubIssue.state
+        )
+    }
+
     static func attachIssue(_ issue: MatterSnapshot, to project: ProjectSnapshot) throws -> MatterSnapshot {
         try LocalDatabase.updateIssueProject(id: issue.id, projectId: project.id)
     }
@@ -144,6 +174,55 @@ enum MatterRepository {
                     projectId: project.id,
                     issueKind: "github_pr",
                     activeExternalIds: Set(pullRequests.map(\.externalId))
+                )
+            } catch {
+                continue
+            }
+        }
+
+        return changedCount
+    }
+
+    @discardableResult
+    static func syncLocalGitHubIssues(
+        projects: [ProjectSnapshot],
+        filtersByProject: [String: GitHubIssueSyncFilter] = [:]
+    ) throws -> Int {
+        var changedCount = 0
+
+        for project in projects {
+            guard let localPath = project.localPath else {
+                continue
+            }
+            guard let repoSlug = LocalGitRepositoryService.githubRepositorySlug(at: localPath) else {
+                continue
+            }
+
+            do {
+                let filter = filtersByProject[project.id] ?? .assignedToMe
+                let githubIssues = try LocalGitRepositoryService.openGitHubIssues(
+                    repoSlug: repoSlug,
+                    filter: filter
+                )
+                for githubIssue in githubIssues {
+                    _ = try LocalDatabase.upsertProjectIssue(
+                        projectId: project.id,
+                        text: githubIssue.title,
+                        issueKind: "github_issue",
+                        source: "github",
+                        externalId: githubIssue.externalId,
+                        externalUrl: githubIssue.url,
+                        externalState: githubIssue.state.isEmpty ? "open" : githubIssue.state
+                    )
+                    changedCount += 1
+                }
+                changedCount += try LocalDatabase.closeMissingExternalIssues(
+                    projectId: project.id,
+                    issueKind: "github_issue",
+                    activeExternalIds: Set(githubIssues.map(\.externalId)),
+                    missingExternalState: "out_of_scope",
+                    logAction: "external_filtered",
+                    summary: "GitHub issue is outside the current sync filter"
                 )
             } catch {
                 continue
