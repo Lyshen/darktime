@@ -6,11 +6,13 @@ struct LocalRepoProjectRow: View {
     @ObservedObject var model: DashboardModel
     let repo: LocalRepoSnapshot
     let lens: AttentionLens
+    let issues: [MatterSnapshot]
     @State private var isRowHovering = false
     @State private var isTitleHovering = false
     @State private var isEditing = false
     @State private var isCreatingIssue = false
     @State private var isConfirmingRemoval = false
+    @State private var showsIssues = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
@@ -45,14 +47,15 @@ struct LocalRepoProjectRow: View {
                             .lineLimit(1)
                     }
 
-                    if repo.openIssueCount > 0 {
-                        Text("\(repo.openIssueCount) issues")
-                            .font(.system(size: 11, weight: .regular, design: .default))
-                            .foregroundStyle(DTColor.dimmed)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.black.opacity(0.035))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                    if !issues.isEmpty {
+                        ProjectIssueToggle(
+                            count: issues.count,
+                            isExpanded: showsIssues
+                        ) {
+                            withAnimation(.easeOut(duration: 0.16)) {
+                                showsIssues.toggle()
+                            }
+                        }
                     }
 
                     Spacer(minLength: 8)
@@ -94,6 +97,11 @@ struct LocalRepoProjectRow: View {
                 .font(.system(size: 11, weight: .regular, design: .default))
                 .foregroundStyle(DTColor.dimmed)
                 .lineLimit(1)
+
+                if showsIssues {
+                    ProjectIssueLane(model: model, issues: issues)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
         }
         .padding(.vertical, 13)
@@ -105,7 +113,9 @@ struct LocalRepoProjectRow: View {
             ProjectEditSheet(model: model, project: repo.project)
         }
         .sheet(isPresented: $isCreatingIssue) {
-            ProjectIssueCreateSheet(model: model, project: repo.project)
+            ProjectIssueCreateSheet(model: model, project: repo.project) {
+                showsIssues = true
+            }
         }
         .alert("Remove project?", isPresented: $isConfirmingRemoval) {
             Button("Remove", role: .destructive) {
@@ -156,9 +166,120 @@ struct LocalRepoProjectRow: View {
     }
 }
 
+private struct ProjectIssueToggle: View {
+    let count: Int
+    let isExpanded: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                Text(count == 1 ? "1 issue" : "\(count) issues")
+                    .font(.system(size: 11, weight: .regular, design: .default))
+            }
+            .foregroundStyle(isHovering ? DTColor.text.opacity(0.74) : DTColor.dimmed)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(isHovering || isExpanded ? Color.black.opacity(0.045) : Color.black.opacity(0.028))
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+    }
+}
+
+private struct ProjectIssueLane: View {
+    @ObservedObject var model: DashboardModel
+    let issues: [MatterSnapshot]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            AttentionHairline()
+                .padding(.top, 3)
+                .padding(.bottom, 2)
+
+            ForEach(issues, id: \.id) { issue in
+                ProjectInlineIssueRow(model: model, issue: issue)
+                if issue.id != issues.last?.id {
+                    AttentionHairline()
+                        .padding(.leading, 16)
+                }
+            }
+        }
+    }
+}
+
+private struct ProjectInlineIssueRow: View {
+    @ObservedObject var model: DashboardModel
+    let issue: MatterSnapshot
+    @State private var isHovering = false
+    @State private var isEditing = false
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Circle()
+                .stroke(issueTint.opacity(0.9), lineWidth: 1)
+                .frame(width: 6, height: 6)
+
+            Text(issue.text)
+                .font(.system(size: 13, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.text.opacity(0.9))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 12)
+
+            ZStack(alignment: .trailing) {
+                HStack(spacing: 4) {
+                    Text(projectIssueKindText(issue.issueKind))
+                    Text("·")
+                        .foregroundStyle(DTColor.dimmed.opacity(0.72))
+                    Text(formatRelative(issue.updatedAt))
+                }
+                .font(.system(size: 11, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.dimmed)
+                .opacity(isHovering ? 0 : 1)
+
+                HStack(spacing: 2) {
+                    AttentionRowActionButton("Edit") {
+                        isEditing = true
+                    }
+                    AttentionRowActionButton("Drop") {
+                        model.moveMatter(issue, to: "dropped", navigate: false)
+                    }
+                }
+                .opacity(isHovering ? 1 : 0)
+                .allowsHitTesting(isHovering)
+            }
+            .frame(minWidth: 118, alignment: .trailing)
+        }
+        .padding(.vertical, 8)
+        .padding(.leading, 2)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .sheet(isPresented: $isEditing) {
+            IssueEditSheet(model: model, issue: issue)
+        }
+    }
+
+    private var issueTint: Color {
+        attentionIssueState(for: issue) == "stale" ? DTColor.dimmed : DTColor.amber
+    }
+}
+
 private struct ProjectIssueCreateSheet: View {
     @ObservedObject var model: DashboardModel
     let project: ProjectSnapshot
+    let onCreated: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
@@ -215,10 +336,22 @@ private struct ProjectIssueCreateSheet: View {
     private func create() {
         let ok = model.createProjectIssue(project, text: text)
         if ok {
+            onCreated()
             dismiss()
         } else {
             errorMessage = model.storageError
         }
+    }
+}
+
+private func projectIssueKindText(_ kind: String?) -> String {
+    switch kind {
+    case "github_pr":
+        return "github pr"
+    case "github_issue":
+        return "github issue"
+    default:
+        return "manual"
     }
 }
 

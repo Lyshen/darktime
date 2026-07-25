@@ -201,7 +201,7 @@ private struct IssueProjectAttachSheet: View {
     }
 }
 
-private struct IssueEditSheet: View {
+struct IssueEditSheet: View {
     @ObservedObject var model: DashboardModel
     let issue: MatterSnapshot
 
