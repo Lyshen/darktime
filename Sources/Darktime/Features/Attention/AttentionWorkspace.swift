@@ -86,10 +86,39 @@ private struct AttentionItemsView: View {
     let emptyTitle: String
     let emptyDetail: String
 
+    private var visibleRepoIDs: Set<String> {
+        Set(visibleRepos.map(\.project.id))
+    }
+
+    private var projectIssuesByID: [String: [MatterSnapshot]] {
+        Dictionary(
+            grouping: visibleIssues.filter { issue in
+                guard let projectId = issue.projectId else {
+                    return false
+                }
+                return visibleRepoIDs.contains(projectId)
+            },
+            by: { $0.projectId ?? "" }
+        ).mapValues { issues in
+            issues.sorted { $0.updatedAt > $1.updatedAt }
+        }
+    }
+
+    private var looseIssues: [MatterSnapshot] {
+        sortIssues(
+            visibleIssues.filter { issue in
+                guard let projectId = issue.projectId else {
+                    return true
+                }
+                return !visibleRepoIDs.contains(projectId)
+            }
+        )
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                if visibleRepos.isEmpty && visibleIssues.isEmpty {
+                if visibleRepos.isEmpty && looseIssues.isEmpty {
                     EmptyStateLine(
                         systemImage: "scope",
                         title: emptyTitle,
@@ -100,7 +129,12 @@ private struct AttentionItemsView: View {
                         AttentionSectionTitle("Projects")
                         VStack(spacing: 0) {
                             ForEach(visibleRepos, id: \.project.id) { repo in
-                                LocalRepoProjectRow(model: model, repo: repo, lens: lens)
+                                LocalRepoProjectRow(
+                                    model: model,
+                                    repo: repo,
+                                    lens: lens,
+                                    issues: projectIssuesByID[repo.project.id] ?? []
+                                )
                                 if repo.project.id != visibleRepos.last?.project.id {
                                     AttentionHairline()
                                 }
@@ -108,12 +142,12 @@ private struct AttentionItemsView: View {
                         }
                     }
 
-                    if !visibleIssues.isEmpty {
+                    if !looseIssues.isEmpty {
                         AttentionSectionTitle("Issues")
                         VStack(spacing: 0) {
-                            ForEach(visibleIssues, id: \.id) { matter in
+                            ForEach(looseIssues, id: \.id) { matter in
                                 IssueRow(model: model, matter: matter)
-                                if matter.id != visibleIssues.last?.id {
+                                if matter.id != looseIssues.last?.id {
                                     AttentionHairline()
                                 }
                             }
@@ -127,6 +161,10 @@ private struct AttentionItemsView: View {
             .padding(.top, 28)
             .padding(.bottom, 40)
         }
+    }
+
+    private func sortIssues(_ issues: [MatterSnapshot]) -> [MatterSnapshot] {
+        issues.sorted { $0.updatedAt > $1.updatedAt }
     }
 }
 
