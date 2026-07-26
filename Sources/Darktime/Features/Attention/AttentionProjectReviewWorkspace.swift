@@ -357,15 +357,8 @@ private struct ProjectReviewWorkSections: View {
             }
 
             if !row.unlinkedActions.isEmpty {
-                ProjectReviewGroupLabel("Unlinked actions")
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(row.unlinkedActions.prefix(3)), id: \.id) { action in
-                        ProjectReviewActionLine(action: action)
-                    }
-                    if row.unlinkedActions.count > 3 {
-                        ProjectReviewMoreLine(count: row.unlinkedActions.count - 3, noun: "more actions")
-                    }
-                }
+                ProjectReviewGroupLabel("Direct work")
+                ProjectReviewDirectWorkLine(actions: row.unlinkedActions)
             }
 
             if !row.waitingIssues.isEmpty {
@@ -380,6 +373,47 @@ private struct ProjectReviewWorkSections: View {
                 }
             }
         }
+    }
+}
+
+private struct ProjectReviewDirectWorkLine: View {
+    let actions: [ActionSnapshot]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("direct")
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(DTColor.dimmed)
+                    .frame(width: 54, alignment: .leading)
+                Text("Direct work")
+                    .font(.system(size: 13, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.text.opacity(0.72))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(summaryText)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(DTColor.dimmed)
+                    .lineLimit(1)
+            }
+
+            ForEach(Array(actions.prefix(2)), id: \.id) { action in
+                ProjectReviewActionLine(action: action, isSubtle: true)
+                    .padding(.leading, 16)
+            }
+            if actions.count > 2 {
+                ProjectReviewMoreLine(count: actions.count - 2, noun: "more actions")
+                    .padding(.leading, 16)
+            }
+        }
+    }
+
+    private var summaryText: String {
+        let noun = actions.count == 1 ? "action" : "actions"
+        guard let latest = actions.first else {
+            return "no action"
+        }
+        return "\(actions.count) \(noun) · last \(formatReviewActionDate(latest.happenedAt))"
     }
 }
 
