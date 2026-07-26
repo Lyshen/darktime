@@ -357,8 +357,8 @@ private struct ProjectReviewWorkSections: View {
             }
 
             if !row.unlinkedActions.isEmpty {
-                ProjectReviewGroupLabel("Direct work")
-                ProjectReviewDirectWorkLine(actions: row.unlinkedActions)
+                ProjectReviewGroupLabel("Unlinked actions")
+                ProjectReviewUnlinkedActionGroup(actions: row.unlinkedActions)
             }
 
             if !row.waitingIssues.isEmpty {
@@ -376,34 +376,31 @@ private struct ProjectReviewWorkSections: View {
     }
 }
 
-private struct ProjectReviewDirectWorkLine: View {
+private struct ProjectReviewUnlinkedActionGroup: View {
     let actions: [ActionSnapshot]
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("direct")
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundStyle(DTColor.dimmed)
-                    .frame(width: 54, alignment: .leading)
-                Text("Direct work")
-                    .font(.system(size: 13, weight: .regular, design: .default))
-                    .foregroundStyle(DTColor.text.opacity(0.72))
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                Text(summaryText)
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundStyle(DTColor.dimmed)
-                    .lineLimit(1)
+            Button {
+                withAnimation(.easeOut(duration: 0.14)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                ProjectReviewMovementLine(
+                    marker: "trace",
+                    title: "Unlinked actions",
+                    trailingText: summaryText,
+                    isExpanded: isExpanded,
+                    isClickable: true
+                )
             }
+            .buttonStyle(.plain)
 
-            ForEach(Array(actions.prefix(2)), id: \.id) { action in
-                ProjectReviewActionLine(action: action, isSubtle: true)
+            if isExpanded {
+                ProjectReviewActionEvidenceList(actions: actions)
                     .padding(.leading, 16)
-            }
-            if actions.count > 2 {
-                ProjectReviewMoreLine(count: actions.count - 2, noun: "more actions")
-                    .padding(.leading, 16)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
@@ -435,13 +432,34 @@ private struct ProjectReviewGroupLabel: View {
 private struct ProjectReviewWorkItemLine: View {
     @ObservedObject var model: DashboardModel
     let work: ProjectReviewWorkItem
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ProjectReviewIssueLine(model: model, issue: work.issue, trailingText: actionCountText)
-            if let latestAction = work.actions.first {
-                ProjectReviewActionLine(action: latestAction, isSubtle: true)
+            Button {
+                if work.actions.isEmpty {
+                    model.openExternalIssue(work.issue)
+                } else {
+                    withAnimation(.easeOut(duration: 0.14)) {
+                        isExpanded.toggle()
+                    }
+                }
+            } label: {
+                ProjectReviewMovementLine(
+                    marker: issueKind,
+                    title: work.issue.text,
+                    trailingText: actionCountText,
+                    isExpanded: isExpanded,
+                    isClickable: work.actions.isEmpty ? work.issue.externalUrl != nil : true
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(work.actions.isEmpty && work.issue.externalUrl == nil)
+
+            if isExpanded && !work.actions.isEmpty {
+                ProjectReviewActionEvidenceList(actions: work.actions)
                     .padding(.leading, 16)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
@@ -452,6 +470,47 @@ private struct ProjectReviewWorkItemLine: View {
         }
         let noun = work.actions.count == 1 ? "action" : "actions"
         return "\(work.actions.count) \(noun)"
+    }
+
+    private var issueKind: String {
+        switch work.issue.issueKind {
+        case "github_pr": return "pr"
+        case "github_issue": return "gh"
+        default: return "issue"
+        }
+    }
+}
+
+private struct ProjectReviewMovementLine: View {
+    let marker: String
+    let title: String
+    let trailingText: String?
+    let isExpanded: Bool
+    let isClickable: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(isClickable ? DTColor.dimmed : Color.clear)
+                .frame(width: 10, alignment: .leading)
+            Text(marker)
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(DTColor.dimmed)
+                .frame(width: 44, alignment: .leading)
+            Text(title)
+                .font(.system(size: 13, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.text.opacity(0.72))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if let trailingText {
+                Text(trailingText)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(DTColor.dimmed)
+                    .lineLimit(1)
+            }
+        }
+        .contentShape(Rectangle())
     }
 }
 
@@ -498,6 +557,18 @@ private struct ProjectReviewIssueLine: View {
         case "github_pr": return "pr"
         case "github_issue": return "gh"
         default: return "issue"
+        }
+    }
+}
+
+private struct ProjectReviewActionEvidenceList: View {
+    let actions: [ActionSnapshot]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(actions, id: \.id) { action in
+                ProjectReviewActionLine(action: action, isSubtle: true)
+            }
         }
     }
 }
