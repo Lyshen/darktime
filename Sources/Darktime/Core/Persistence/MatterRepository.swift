@@ -85,6 +85,38 @@ enum MatterRepository {
         )
     }
 
+    static func closeGitHubIssue(_ issue: MatterSnapshot, project: ProjectSnapshot) throws -> MatterSnapshot {
+        guard issue.status == "issue" else {
+            throw StorageError.invalidInput("Only open issues can be closed.")
+        }
+        guard issue.issueKind == "github_issue" else {
+            throw StorageError.invalidInput("Only GitHub issues can be closed on GitHub.")
+        }
+        guard issue.projectId == project.id else {
+            throw StorageError.invalidInput("Issue must belong to this project before closing.")
+        }
+        guard let localPath = project.localPath else {
+            throw StorageError.invalidInput("Only local repo projects can close GitHub issues.")
+        }
+        guard let repoSlug = LocalGitRepositoryService.githubRepositorySlug(at: localPath) else {
+            throw StorageError.invalidInput("This project does not have a GitHub origin remote.")
+        }
+        guard let reference = githubIssueReference(for: issue) else {
+            throw StorageError.invalidInput("This issue does not have a GitHub issue number or URL.")
+        }
+
+        try LocalGitRepositoryService.closeGitHubIssue(
+            repoSlug: repoSlug,
+            reference: reference,
+            reason: "completed"
+        )
+        return try LocalDatabase.closeExternalIssue(
+            id: issue.id,
+            externalState: "closed",
+            summary: "Closed GitHub issue"
+        )
+    }
+
     static func attachIssue(_ issue: MatterSnapshot, to project: ProjectSnapshot) throws -> MatterSnapshot {
         try LocalDatabase.updateIssueProject(id: issue.id, projectId: project.id)
     }
@@ -246,5 +278,15 @@ enum MatterRepository {
 
     static func createShortcutTestCapture(text: String) throws {
         try LocalDatabase.createShortcutTestCapture(text: text)
+    }
+
+    private static func githubIssueReference(for issue: MatterSnapshot) -> String? {
+        if let externalId = issue.externalId?.trimmingCharacters(in: .whitespacesAndNewlines), !externalId.isEmpty {
+            return externalId.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        }
+        if let externalUrl = issue.externalUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !externalUrl.isEmpty {
+            return externalUrl
+        }
+        return nil
     }
 }

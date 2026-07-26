@@ -78,6 +78,7 @@ empty    -> 还没有 Action
 - Project 下的手动 Issue。
 - GitHub open issues 自动导入为 `github_issue` Issue，默认只同步 Assigned to me。
 - 本地 Issue 可发布为 GitHub Issue，并默认 assign 给自己。
+- GitHub Issue 可从 Darktime close，close 会同步到 GitHub。
 - 本地 git repo Project。
 - 本地 repo 的 open PR 自动导入为 `github_pr` Issue。
 - commit 自动导入为 Action。

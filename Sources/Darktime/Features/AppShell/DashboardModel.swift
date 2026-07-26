@@ -309,6 +309,24 @@ final class DashboardModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    func closeGitHubIssue(_ issue: MatterSnapshot) -> Bool {
+        guard let project = project(for: issue) else {
+            storageError = "Issue must belong to a project before closing on GitHub."
+            return false
+        }
+
+        do {
+            _ = try MatterRepository.closeGitHubIssue(issue, project: project)
+            refresh()
+            scheduleLocalRepoActionSync(force: true)
+            return true
+        } catch {
+            storageError = error.localizedDescription
+            return false
+        }
+    }
+
     func canPublishIssueToGitHub(_ issue: MatterSnapshot) -> Bool {
         guard issue.status == "issue", issue.issueKind != "github_issue", issue.issueKind != "github_pr" else {
             return false
