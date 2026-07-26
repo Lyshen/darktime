@@ -19,6 +19,7 @@ final class DashboardModel: ObservableObject {
     @Published var projects: [ProjectSnapshot] = []
     @Published var localRepoSnapshots: [LocalRepoSnapshot] = []
     @Published var actions: [ActionSnapshot] = []
+    @Published var actionRefs: [ActionRefSnapshot] = []
     @Published var storageReady = false
     @Published var storageError: String?
     @Published var shortcutPendingCount = 0
@@ -28,6 +29,7 @@ final class DashboardModel: ObservableObject {
     @Published var actionSyncError: String?
     @Published var actionSyncLastFinishedAt: String?
     @Published var actionSyncLastChangeCount = 0
+    @Published var reviewRevision = 0
     @Published var copiedCommand = false
     @Published var dailyFocusIssueIDs = Set<String>()
     @Published var dailyReflection: String {
@@ -560,9 +562,11 @@ final class DashboardModel: ObservableObject {
             matters = snapshot.matters
             projects = snapshot.projects
             actions = snapshot.actions
+            actionRefs = snapshot.actionRefs
             refreshLocalRepoSnapshots(from: snapshot.actions)
             scheduleLocalRepoActionSyncIfNeeded()
             refreshShortcutCounts()
+            reviewRevision += 1
             storageReady = true
             storageError = nil
         } catch {
@@ -571,6 +575,7 @@ final class DashboardModel: ObservableObject {
             projects = []
             localRepoSnapshots = []
             actions = []
+            actionRefs = []
             storageReady = false
             storageError = String(describing: error)
         }

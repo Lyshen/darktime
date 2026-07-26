@@ -91,6 +91,16 @@ struct ActionSnapshot: Sendable {
     let createdAt: String
 }
 
+struct ActionRefSnapshot: Sendable, Hashable {
+    let actionId: String
+    let projectId: String
+    let refKind: String
+    let refKey: String
+    let refTitle: String?
+    let refUrl: String?
+    let createdAt: String
+}
+
 struct ActionUpsert: Sendable {
     let projectId: String
     let source: String
@@ -99,4 +109,32 @@ struct ActionUpsert: Sendable {
     let happenedAt: String
     let summary: String?
     let metadataJson: String?
+    let refs: [ActionRefUpsert]
+
+    init(
+        projectId: String,
+        source: String,
+        kind: String,
+        externalId: String,
+        happenedAt: String,
+        summary: String?,
+        metadataJson: String?,
+        refs: [ActionRefUpsert] = []
+    ) {
+        self.projectId = projectId
+        self.source = source
+        self.kind = kind
+        self.externalId = externalId
+        self.happenedAt = happenedAt
+        self.summary = summary
+        self.metadataJson = metadataJson
+        self.refs = refs
+    }
+}
+
+struct ActionRefUpsert: Sendable, Hashable {
+    let kind: String
+    let key: String
+    let title: String?
+    let url: String?
 }

@@ -61,6 +61,7 @@ struct AttentionWorkspace: View {
                     model: model,
                     repos: model.localRepoSnapshots,
                     actions: model.actions,
+                    actionRefs: model.actionRefs,
                     issues: model.projectIssueMatters,
                     range: reviewRange
                 )
