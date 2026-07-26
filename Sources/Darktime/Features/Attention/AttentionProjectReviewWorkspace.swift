@@ -86,22 +86,22 @@ struct AttentionProjectReviewWorkspace: View {
         projectReviewRows(repos: repos, actions: actions, issues: issues, range: range)
     }
 
-    private var activeRows: [ProjectReviewRowData] {
-        rows.filter { !$0.actions.isEmpty }
+    private var movedRows: [ProjectReviewRowData] {
+        rows.filter(\.hasMovement)
     }
 
-    private var quietRows: [ProjectReviewRowData] {
-        rows.filter { $0.actions.isEmpty && !$0.issues.isEmpty }
+    private var waitingRows: [ProjectReviewRowData] {
+        rows.filter { !$0.hasMovement && $0.hasOpenWork }
     }
 
     private var actionCount: Int {
-        activeRows.reduce(0) { $0 + $1.actions.count }
+        movedRows.reduce(0) { $0 + $1.actionCount }
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                if activeRows.isEmpty && quietRows.isEmpty {
+                if movedRows.isEmpty && waitingRows.isEmpty {
                     EmptyStateLine(
                         systemImage: "clock.arrow.circlepath",
                         title: "No review signal",
@@ -110,19 +110,19 @@ struct AttentionProjectReviewWorkspace: View {
                 } else {
                     ProjectReviewSummaryLine(
                         range: range,
-                        activeCount: activeRows.count,
-                        quietCount: quietRows.count,
+                        movedCount: movedRows.count,
+                        waitingCount: waitingRows.count,
                         actionCount: actionCount
                     )
 
-                    if !activeRows.isEmpty {
-                        ProjectReviewSectionTitle("Active Projects")
-                        ProjectReviewRowList(model: model, rows: activeRows, rowKind: .active)
+                    if !movedRows.isEmpty {
+                        ProjectReviewSectionTitle("Moved Projects")
+                        ProjectReviewRowList(model: model, rows: movedRows, rowKind: .moved)
                     }
 
-                    if !quietRows.isEmpty {
-                        ProjectReviewSectionTitle("Quiet With Issues")
-                        ProjectReviewRowList(model: model, rows: quietRows, rowKind: .quiet)
+                    if !waitingRows.isEmpty {
+                        ProjectReviewSectionTitle("Waiting Projects")
+                        ProjectReviewRowList(model: model, rows: waitingRows, rowKind: .waiting)
                     }
                 }
             }
@@ -136,26 +136,55 @@ struct AttentionProjectReviewWorkspace: View {
 }
 
 private enum ProjectReviewRowKind {
-    case active
-    case quiet
+    case moved
+    case waiting
 }
 
 private struct ProjectReviewRowData: Identifiable {
     let repo: LocalRepoSnapshot
-    let actions: [ActionSnapshot]
-    let issues: [MatterSnapshot]
+    let linkedWork: [ProjectReviewWorkItem]
+    let unlinkedActions: [ActionSnapshot]
+    let waitingIssues: [MatterSnapshot]
 
     var id: String { repo.project.id }
 
     var latestAction: ActionSnapshot? {
-        actions.first
+        allActions.first
     }
+
+    var allActions: [ActionSnapshot] {
+        (linkedWork.flatMap(\.actions) + unlinkedActions)
+            .sorted { $0.happenedAt > $1.happenedAt }
+    }
+
+    var actionCount: Int {
+        allActions.count
+    }
+
+    var openWorkCount: Int {
+        linkedWork.count + waitingIssues.count
+    }
+
+    var hasMovement: Bool {
+        actionCount > 0
+    }
+
+    var hasOpenWork: Bool {
+        openWorkCount > 0
+    }
+}
+
+private struct ProjectReviewWorkItem: Identifiable {
+    let issue: MatterSnapshot
+    let actions: [ActionSnapshot]
+
+    var id: String { issue.id }
 }
 
 private struct ProjectReviewSummaryLine: View {
     let range: ProjectReviewRange
-    let activeCount: Int
-    let quietCount: Int
+    let movedCount: Int
+    let waitingCount: Int
     let actionCount: Int
 
     var body: some View {
@@ -164,10 +193,10 @@ private struct ProjectReviewSummaryLine: View {
                 .foregroundStyle(DTColor.text)
             Text("·")
                 .foregroundStyle(DTColor.dimmed)
-            Text("\(activeCount) active")
+            Text("\(movedCount) moved")
             Text("·")
                 .foregroundStyle(DTColor.dimmed)
-            Text("\(quietCount) quiet")
+            Text("\(waitingCount) waiting")
             Text("·")
                 .foregroundStyle(DTColor.dimmed)
             Text(actionCount == 1 ? "1 action" : "\(actionCount) actions")
@@ -218,7 +247,7 @@ private struct ProjectReviewRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
-            Image(systemName: rowKind == .active ? "waveform.path.ecg" : "pause.circle")
+            Image(systemName: rowKind == .moved ? "waveform.path.ecg" : "pause.circle")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 28, height: 28)
@@ -254,8 +283,7 @@ private struct ProjectReviewRow: View {
                     ProjectReviewMeta(row: row, tint: tint)
                 }
 
-                ProjectReviewActionLines(actions: Array(row.actions.prefix(3)))
-                ProjectReviewIssueLines(model: model, issues: Array(row.issues.prefix(3)))
+                ProjectReviewWorkSections(model: model, row: row)
             }
         }
         .padding(.vertical, 13)
@@ -269,7 +297,7 @@ private struct ProjectReviewRow: View {
     }
 
     private var tint: Color {
-        rowKind == .active ? DTColor.green : DTColor.amber
+        rowKind == .moved ? DTColor.green : DTColor.amber
     }
 }
 
@@ -291,7 +319,7 @@ private struct ProjectReviewMeta: View {
     }
 
     private var actionText: String {
-        let count = row.actions.count
+        let count = row.actionCount
         guard count > 0 else {
             return "no action"
         }
@@ -300,72 +328,118 @@ private struct ProjectReviewMeta: View {
     }
 
     private var issueText: String {
-        let count = row.issues.count
-        let noun = count == 1 ? "issue" : "issues"
-        return "\(count) \(noun)"
+        let count = row.openWorkCount
+        let noun = count == 1 ? "item" : "items"
+        return "\(count) open \(noun)"
     }
 
     private var stateText: String {
-        row.actions.isEmpty ? "quiet" : "active"
+        row.hasMovement ? "moved" : "waiting"
     }
 }
 
-private struct ProjectReviewActionLines: View {
-    let actions: [ActionSnapshot]
-
-    var body: some View {
-        if actions.isEmpty {
-            Text("No actions in this range")
-                .font(.system(size: 13, weight: .regular, design: .default))
-                .foregroundStyle(DTColor.muted)
-                .lineLimit(1)
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(actions, id: \.id) { action in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(formatReviewActionDate(action.happenedAt))
-                            .font(.system(size: 11, weight: .regular, design: .monospaced))
-                            .foregroundStyle(DTColor.dimmed)
-                            .frame(width: 54, alignment: .leading)
-                        Text(action.summary ?? "Action")
-                            .font(.system(size: 13, weight: .regular, design: .default))
-                            .foregroundStyle(DTColor.muted)
-                            .lineLimit(1)
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct ProjectReviewIssueLines: View {
+private struct ProjectReviewWorkSections: View {
     @ObservedObject var model: DashboardModel
-    let issues: [MatterSnapshot]
+    let row: ProjectReviewRowData
 
     var body: some View {
-        if !issues.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(issues, id: \.id) { issue in
-                    if issue.externalUrl != nil {
-                        Button {
-                            model.openExternalIssue(issue)
-                        } label: {
-                            ProjectReviewIssueLine(issue: issue)
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        ProjectReviewIssueLine(issue: issue)
+        VStack(alignment: .leading, spacing: 8) {
+            if !row.linkedWork.isEmpty {
+                ProjectReviewGroupLabel("Linked work")
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Array(row.linkedWork.prefix(3))) { work in
+                        ProjectReviewWorkItemLine(model: model, work: work)
+                    }
+                    if row.linkedWork.count > 3 {
+                        ProjectReviewMoreLine(count: row.linkedWork.count - 3, noun: "more work items")
+                    }
+                }
+            }
+
+            if !row.unlinkedActions.isEmpty {
+                ProjectReviewGroupLabel("Unlinked actions")
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(row.unlinkedActions.prefix(3)), id: \.id) { action in
+                        ProjectReviewActionLine(action: action)
+                    }
+                    if row.unlinkedActions.count > 3 {
+                        ProjectReviewMoreLine(count: row.unlinkedActions.count - 3, noun: "more actions")
+                    }
+                }
+            }
+
+            if !row.waitingIssues.isEmpty {
+                ProjectReviewGroupLabel("Waiting issues")
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(row.waitingIssues.prefix(3)), id: \.id) { issue in
+                        ProjectReviewIssueLine(model: model, issue: issue)
+                    }
+                    if row.waitingIssues.count > 3 {
+                        ProjectReviewMoreLine(count: row.waitingIssues.count - 3, noun: "more issues")
                     }
                 }
             }
         }
+    }
+}
+
+private struct ProjectReviewGroupLabel: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 11, weight: .medium, design: .default))
+            .foregroundStyle(DTColor.dimmed)
+            .padding(.top, 1)
+    }
+}
+
+private struct ProjectReviewWorkItemLine: View {
+    @ObservedObject var model: DashboardModel
+    let work: ProjectReviewWorkItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ProjectReviewIssueLine(model: model, issue: work.issue, trailingText: actionCountText)
+            if let latestAction = work.actions.first {
+                ProjectReviewActionLine(action: latestAction, isSubtle: true)
+                    .padding(.leading, 16)
+            }
+        }
+    }
+
+    private var actionCountText: String? {
+        guard !work.actions.isEmpty else {
+            return nil
+        }
+        let noun = work.actions.count == 1 ? "action" : "actions"
+        return "\(work.actions.count) \(noun)"
     }
 }
 
 private struct ProjectReviewIssueLine: View {
+    @ObservedObject var model: DashboardModel
     let issue: MatterSnapshot
+    var trailingText: String? = nil
 
     var body: some View {
+        if issue.externalUrl != nil {
+            Button {
+                model.openExternalIssue(issue)
+            } label: {
+                line
+            }
+            .buttonStyle(.plain)
+        } else {
+            line
+        }
+    }
+
+    private var line: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(issueKind)
                 .font(.system(size: 11, weight: .regular, design: .monospaced))
@@ -375,6 +449,13 @@ private struct ProjectReviewIssueLine: View {
                 .font(.system(size: 13, weight: .regular, design: .default))
                 .foregroundStyle(DTColor.text.opacity(0.72))
                 .lineLimit(1)
+            Spacer(minLength: 8)
+            if let trailingText {
+                Text(trailingText)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(DTColor.dimmed)
+                    .lineLimit(1)
+            }
         }
     }
 
@@ -384,6 +465,36 @@ private struct ProjectReviewIssueLine: View {
         case "github_issue": return "gh"
         default: return "issue"
         }
+    }
+}
+
+private struct ProjectReviewActionLine: View {
+    let action: ActionSnapshot
+    var isSubtle = false
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(formatReviewActionDate(action.happenedAt))
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(DTColor.dimmed)
+                .frame(width: 54, alignment: .leading)
+            Text(action.summary ?? "Action")
+                .font(.system(size: 13, weight: .regular, design: .default))
+                .foregroundStyle(isSubtle ? DTColor.dimmed : DTColor.muted)
+                .lineLimit(1)
+        }
+    }
+}
+
+private struct ProjectReviewMoreLine: View {
+    let count: Int
+    let noun: String
+
+    var body: some View {
+        Text("+ \(count) \(noun)")
+            .font(.system(size: 11, weight: .regular, design: .default))
+            .foregroundStyle(DTColor.dimmed)
+            .padding(.leading, 60)
     }
 }
 
@@ -408,28 +519,120 @@ private func projectReviewRows(
 
     return repos
         .map { repo in
-            ProjectReviewRowData(
+            projectReviewRow(
                 repo: repo,
                 actions: actionsByProject[repo.project.id] ?? [],
                 issues: issuesByProject[repo.project.id] ?? []
             )
         }
-        .filter { !$0.actions.isEmpty || !$0.issues.isEmpty }
+        .filter { $0.hasMovement || $0.hasOpenWork }
         .sorted { left, right in
-            if left.actions.isEmpty != right.actions.isEmpty {
-                return !left.actions.isEmpty
+            if left.hasMovement != right.hasMovement {
+                return left.hasMovement
             }
-            if left.actions.count != right.actions.count {
-                return left.actions.count > right.actions.count
+            if left.actionCount != right.actionCount {
+                return left.actionCount > right.actionCount
             }
             if let leftDate = left.latestAction?.happenedAt, let rightDate = right.latestAction?.happenedAt {
                 return leftDate > rightDate
             }
-            if left.issues.count != right.issues.count {
-                return left.issues.count > right.issues.count
+            if left.openWorkCount != right.openWorkCount {
+                return left.openWorkCount > right.openWorkCount
             }
             return left.repo.project.title.localizedCaseInsensitiveCompare(right.repo.project.title) == .orderedAscending
         }
+}
+
+private func projectReviewRow(
+    repo: LocalRepoSnapshot,
+    actions: [ActionSnapshot],
+    issues: [MatterSnapshot]
+) -> ProjectReviewRowData {
+    var linkedActionIDs = Set<String>()
+    var linkedWork: [ProjectReviewWorkItem] = []
+
+    for issue in issues {
+        let linkedActions = actions
+            .filter { action in
+                actionReferencesIssue(action, issue: issue)
+            }
+            .sorted { $0.happenedAt > $1.happenedAt }
+
+        if issue.issueKind == "github_pr" || !linkedActions.isEmpty {
+            linkedWork.append(ProjectReviewWorkItem(issue: issue, actions: linkedActions))
+            linkedActionIDs.formUnion(linkedActions.map(\.id))
+        }
+    }
+
+    let linkedIssueIDs = Set(linkedWork.map(\.issue.id))
+    let unlinkedActions = actions.filter { !linkedActionIDs.contains($0.id) }
+    let waitingIssues = issues.filter { !linkedIssueIDs.contains($0.id) }
+
+    return ProjectReviewRowData(
+        repo: repo,
+        linkedWork: sortReviewWork(linkedWork),
+        unlinkedActions: unlinkedActions,
+        waitingIssues: waitingIssues
+    )
+}
+
+private func sortReviewWork(_ workItems: [ProjectReviewWorkItem]) -> [ProjectReviewWorkItem] {
+    workItems.sorted { left, right in
+        let leftRank = reviewIssueKindRank(left.issue)
+        let rightRank = reviewIssueKindRank(right.issue)
+        if leftRank != rightRank {
+            return leftRank < rightRank
+        }
+        if left.actions.count != right.actions.count {
+            return left.actions.count > right.actions.count
+        }
+        let leftDate = left.actions.first?.happenedAt ?? left.issue.updatedAt
+        let rightDate = right.actions.first?.happenedAt ?? right.issue.updatedAt
+        if leftDate != rightDate {
+            return leftDate > rightDate
+        }
+        return left.issue.text.localizedCaseInsensitiveCompare(right.issue.text) == .orderedAscending
+    }
+}
+
+private func reviewIssueKindRank(_ issue: MatterSnapshot) -> Int {
+    switch issue.issueKind {
+    case "github_pr": return 0
+    case "github_issue": return 1
+    default: return 2
+    }
+}
+
+private func actionReferencesIssue(_ action: ActionSnapshot, issue: MatterSnapshot) -> Bool {
+    guard let summary = action.summary, !summary.isEmpty else {
+        return false
+    }
+
+    return issueReferenceTokens(issue).contains { token in
+        summary.range(of: token, options: [.caseInsensitive]) != nil
+    }
+}
+
+private func issueReferenceTokens(_ issue: MatterSnapshot) -> [String] {
+    var tokens: [String] = []
+
+    if let externalId = issue.externalId?.trimmingCharacters(in: .whitespacesAndNewlines), !externalId.isEmpty {
+        if externalId.hasPrefix("#") {
+            tokens.append(externalId)
+        } else {
+            tokens.append("#\(externalId)")
+        }
+    }
+
+    if let externalUrl = issue.externalUrl,
+       let number = externalUrl
+        .split(separator: "/")
+        .last
+        .flatMap({ Int($0) }) {
+        tokens.append("#\(number)")
+    }
+
+    return Array(Set(tokens))
 }
 
 private func formatReviewActionDate(_ isoString: String) -> String {
