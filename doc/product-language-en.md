@@ -74,6 +74,7 @@ In:
 - Manual Project Issues.
 - GitHub open issues imported as `github_issue` Issues, defaulting to Assigned to me.
 - Local Issues published as GitHub Issues and assigned to the current user by default.
+- GitHub Issues can be closed from Darktime, and close is synced to GitHub.
 - Local git repo Projects.
 - Open PRs from local repos imported as `github_pr` Issues.
 - Commits imported as Actions.

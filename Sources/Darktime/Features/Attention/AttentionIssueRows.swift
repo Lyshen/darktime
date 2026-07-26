@@ -7,6 +7,7 @@ struct IssueRow: View {
     @State private var isHovering = false
     @State private var isEditing = false
     @State private var isAttaching = false
+    @State private var isConfirmingClose = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
@@ -50,33 +51,48 @@ struct IssueRow: View {
                         .opacity(isHovering ? 0 : 1)
 
                         HStack(spacing: 2) {
-                            AttentionRowActionButton("Edit") {
-                                isEditing = true
-                            }
-                            if matter.externalUrl != nil {
+                            if isGitHubIssue {
+                                if matter.externalUrl != nil {
+                                    AttentionRowActionButton("Open") {
+                                        model.openExternalIssue(matter)
+                                    }
+                                }
+                                AttentionRowActionButton("Close") {
+                                    isConfirmingClose = true
+                                }
+                            } else if isGitHubPullRequest {
                                 AttentionRowActionButton("Open") {
                                     model.openExternalIssue(matter)
                                 }
-                            }
-                            if model.canPublishIssueToGitHub(matter) {
-                                AttentionRowActionButton("Publish") {
-                                    model.publishIssueToGitHub(matter)
-                                }
-                            }
-                            if matter.projectId == nil {
-                                AttentionRowActionButton("Attach") {
-                                    isAttaching = true
-                                }
                             } else {
-                                AttentionRowActionButton("Detach") {
-                                    model.detachIssue(matter)
+                                AttentionRowActionButton("Edit") {
+                                    isEditing = true
                                 }
-                            }
-                            AttentionRowActionButton("Make Project") {
-                                model.linkIssueToLocalRepoProject(matter)
-                            }
-                            AttentionRowActionButton("Drop") {
-                                model.moveMatter(matter, to: "dropped")
+                                if matter.externalUrl != nil {
+                                    AttentionRowActionButton("Open") {
+                                        model.openExternalIssue(matter)
+                                    }
+                                }
+                                if model.canPublishIssueToGitHub(matter) {
+                                    AttentionRowActionButton("Publish") {
+                                        model.publishIssueToGitHub(matter)
+                                    }
+                                }
+                                if matter.projectId == nil {
+                                    AttentionRowActionButton("Attach") {
+                                        isAttaching = true
+                                    }
+                                } else {
+                                    AttentionRowActionButton("Detach") {
+                                        model.detachIssue(matter)
+                                    }
+                                }
+                                AttentionRowActionButton("Make Project") {
+                                    model.linkIssueToLocalRepoProject(matter)
+                                }
+                                AttentionRowActionButton("Drop") {
+                                    model.moveMatter(matter, to: "dropped")
+                                }
                             }
                         }
                         .opacity(isHovering ? 1 : 0)
@@ -101,6 +117,14 @@ struct IssueRow: View {
         .sheet(isPresented: $isAttaching) {
             IssueProjectAttachSheet(model: model, issue: matter)
         }
+        .alert("Close GitHub issue?", isPresented: $isConfirmingClose) {
+            Button("Close on GitHub", role: .destructive) {
+                model.closeGitHubIssue(matter)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will close the issue on GitHub and remove it from Attention.")
+        }
     }
 
     private var issueState: String {
@@ -111,6 +135,13 @@ struct IssueRow: View {
         issueState == "stale" ? DTColor.dimmed : DTColor.amber
     }
 
+    private var isGitHubIssue: Bool {
+        matter.issueKind == "github_issue"
+    }
+
+    private var isGitHubPullRequest: Bool {
+        matter.issueKind == "github_pr"
+    }
 }
 
 private struct IssueKindText: View {

@@ -393,6 +393,73 @@ extension LocalDatabase {
         )
     }
 
+    static func closeExternalIssue(
+        id: String,
+        externalState: String = "closed",
+        summary: String = "External issue closed"
+    ) throws -> MatterSnapshot {
+        let normalizedExternalState = normalizedOptional(externalState.trimmingCharacters(in: .whitespacesAndNewlines)) ?? "closed"
+        let normalizedSummary = normalizedOptional(summary.trimmingCharacters(in: .whitespacesAndNewlines)) ?? "External issue closed"
+        let db = try openDatabase()
+        defer { sqlite3_close(db) }
+
+        guard let current = try matter(id: id, db: db) else {
+            throw StorageError.notFound("Matter \(id) was not found.")
+        }
+        guard current.status == "issue" else {
+            throw StorageError.invalidInput("Only open issues can be closed.")
+        }
+
+        let now = isoNow()
+        try exec("BEGIN TRANSACTION;", db: db)
+        do {
+            try executePrepared(
+                """
+                UPDATE matters
+                SET status = 'done',
+                    external_state = ?,
+                    updated_at = ?
+                WHERE id = ?;
+                """,
+                values: [normalizedExternalState, now, id],
+                db: db
+            )
+            try executePrepared(
+                """
+                INSERT INTO matter_logs (
+                  matter_id,
+                  created_at,
+                  action,
+                  from_status,
+                  to_status,
+                  summary
+                ) VALUES (?, ?, 'external_closed', 'issue', 'done', ?);
+                """,
+                values: [id, now, normalizedSummary],
+                db: db
+            )
+            try exec("COMMIT;", db: db)
+        } catch {
+            try? exec("ROLLBACK;", db: db)
+            throw error
+        }
+
+        return MatterSnapshot(
+            id: current.id,
+            text: current.text,
+            status: "done",
+            source: current.source,
+            createdAt: current.createdAt,
+            updatedAt: now,
+            rawPayloadJson: current.rawPayloadJson,
+            projectId: current.projectId,
+            issueKind: current.issueKind,
+            externalId: current.externalId,
+            externalUrl: current.externalUrl,
+            externalState: normalizedExternalState
+        )
+    }
+
     static func updateMatterStatus(id: String, status: String) throws -> MatterSnapshot {
         guard matterStatuses.contains(status) else {
             throw StorageError.invalidInput("Unknown matter status '\(status)'.")

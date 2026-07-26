@@ -220,6 +220,7 @@ private struct ProjectInlineIssueRow: View {
     let issue: MatterSnapshot
     @State private var isHovering = false
     @State private var isEditing = false
+    @State private var isConfirmingClose = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -247,21 +248,33 @@ private struct ProjectInlineIssueRow: View {
                 .opacity(isHovering ? 0 : 1)
 
                 HStack(spacing: 2) {
-                    if issue.externalUrl != nil {
-                        AttentionRowActionButton("Open") {
-                            model.openExternalIssue(issue)
+                    if isGitHubIssue {
+                        if issue.externalUrl != nil {
+                            AttentionRowActionButton("Open") {
+                                model.openExternalIssue(issue)
+                            }
                         }
-                    }
-                    if model.canPublishIssueToGitHub(issue) {
-                        AttentionRowActionButton("Publish") {
-                            model.publishIssueToGitHub(issue)
+                        AttentionRowActionButton("Close") {
+                            isConfirmingClose = true
                         }
-                    }
-                    AttentionRowActionButton("Edit") {
-                        isEditing = true
-                    }
-                    AttentionRowActionButton("Drop") {
-                        model.moveMatter(issue, to: "dropped", navigate: false)
+                    } else if isGitHubPullRequest {
+                        if issue.externalUrl != nil {
+                            AttentionRowActionButton("Open") {
+                                model.openExternalIssue(issue)
+                            }
+                        }
+                    } else {
+                        if model.canPublishIssueToGitHub(issue) {
+                            AttentionRowActionButton("Publish") {
+                                model.publishIssueToGitHub(issue)
+                            }
+                        }
+                        AttentionRowActionButton("Edit") {
+                            isEditing = true
+                        }
+                        AttentionRowActionButton("Drop") {
+                            model.moveMatter(issue, to: "dropped", navigate: false)
+                        }
                     }
                 }
                 .opacity(isHovering ? 1 : 0)
@@ -278,10 +291,26 @@ private struct ProjectInlineIssueRow: View {
         .sheet(isPresented: $isEditing) {
             IssueEditSheet(model: model, issue: issue)
         }
+        .alert("Close GitHub issue?", isPresented: $isConfirmingClose) {
+            Button("Close on GitHub", role: .destructive) {
+                model.closeGitHubIssue(issue)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will close the issue on GitHub and remove it from Attention.")
+        }
     }
 
     private var issueTint: Color {
         attentionIssueState(for: issue) == "stale" ? DTColor.dimmed : DTColor.amber
+    }
+
+    private var isGitHubIssue: Bool {
+        issue.issueKind == "github_issue"
+    }
+
+    private var isGitHubPullRequest: Bool {
+        issue.issueKind == "github_pr"
     }
 }
 

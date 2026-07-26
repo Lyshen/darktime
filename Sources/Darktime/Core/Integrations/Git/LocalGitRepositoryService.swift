@@ -290,6 +290,29 @@ enum LocalGitRepositoryService {
         )
     }
 
+    static func closeGitHubIssue(repoSlug: String, reference: String, reason: String = "completed") throws {
+        let trimmedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedReference.isEmpty else {
+            throw LocalGitRepositoryError.commandFailed("GitHub issue reference cannot be empty.")
+        }
+
+        _ = try runTool(
+            executable: "/usr/bin/env",
+            arguments: [
+                "gh",
+                "issue",
+                "close",
+                trimmedReference,
+                "--repo",
+                repoSlug,
+                "--reason",
+                reason
+            ],
+            allowFailure: false,
+            timeout: 18
+        )
+    }
+
     private static func currentBranch(at path: String) -> String {
         let branch = (try? runGit(
             arguments: ["-C", path, "branch", "--show-current"],
