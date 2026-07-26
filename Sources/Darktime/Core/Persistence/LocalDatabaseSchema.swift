@@ -99,6 +99,18 @@ extension LocalDatabase {
               created_at TEXT NOT NULL,
               UNIQUE(project_id, source, external_id)
             );
+            CREATE TABLE IF NOT EXISTS action_refs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              action_id TEXT NOT NULL,
+              project_id TEXT NOT NULL,
+              ref_kind TEXT NOT NULL,
+              ref_key TEXT NOT NULL,
+              ref_title TEXT,
+              ref_url TEXT,
+              created_at TEXT NOT NULL,
+              UNIQUE(action_id, ref_kind, ref_key),
+              FOREIGN KEY (action_id) REFERENCES actions(id) ON DELETE CASCADE
+            );
             CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_seen ON mcp_sessions(last_seen_at DESC);
             CREATE INDEX IF NOT EXISTS idx_action_logs_created_at ON action_logs(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_action_logs_session_id ON action_logs(session_id);
@@ -111,6 +123,8 @@ extension LocalDatabase {
             CREATE INDEX IF NOT EXISTS idx_projects_kind_updated ON projects(kind, updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_actions_project_happened ON actions(project_id, happened_at DESC);
             CREATE INDEX IF NOT EXISTS idx_actions_source_kind ON actions(source, kind, happened_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_action_refs_action ON action_refs(action_id);
+            CREATE INDEX IF NOT EXISTS idx_action_refs_project_ref ON action_refs(project_id, ref_kind, ref_key);
             """,
             db: db
         )

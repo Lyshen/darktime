@@ -192,6 +192,18 @@ extension LocalDatabase {
         )
     }
 
+    static func actionRefSnapshot(_ statement: OpaquePointer) -> ActionRefSnapshot {
+        ActionRefSnapshot(
+            actionId: columnText(statement, 0) ?? "",
+            projectId: columnText(statement, 1) ?? "",
+            refKind: columnText(statement, 2) ?? "",
+            refKey: columnText(statement, 3) ?? "",
+            refTitle: columnText(statement, 4),
+            refUrl: columnText(statement, 5),
+            createdAt: columnText(statement, 6) ?? ""
+        )
+    }
+
     static func normalizedOptional(_ value: String?) -> String? {
         guard let value, !value.isEmpty else {
             return nil

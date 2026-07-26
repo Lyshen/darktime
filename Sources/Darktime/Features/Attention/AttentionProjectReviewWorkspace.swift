@@ -79,29 +79,16 @@ struct AttentionProjectReviewWorkspace: View {
     @ObservedObject var model: DashboardModel
     let repos: [LocalRepoSnapshot]
     let actions: [ActionSnapshot]
+    let actionRefs: [ActionRefSnapshot]
     let issues: [MatterSnapshot]
     let range: ProjectReviewRange
 
-    private var rows: [ProjectReviewRowData] {
-        projectReviewRows(repos: repos, actions: actions, issues: issues, range: range)
-    }
-
-    private var movedRows: [ProjectReviewRowData] {
-        rows.filter(\.hasMovement)
-    }
-
-    private var waitingRows: [ProjectReviewRowData] {
-        rows.filter { !$0.hasMovement && $0.hasOpenWork }
-    }
-
-    private var actionCount: Int {
-        movedRows.reduce(0) { $0 + $1.actionCount }
-    }
+    @State private var projection = ProjectReviewProjection.empty
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                if movedRows.isEmpty && waitingRows.isEmpty {
+                if projection.movedRows.isEmpty && projection.waitingRows.isEmpty {
                     EmptyStateLine(
                         systemImage: "clock.arrow.circlepath",
                         title: "No review signal",
@@ -110,19 +97,19 @@ struct AttentionProjectReviewWorkspace: View {
                 } else {
                     ProjectReviewSummaryLine(
                         range: range,
-                        movedCount: movedRows.count,
-                        waitingCount: waitingRows.count,
-                        actionCount: actionCount
+                        movedCount: projection.movedRows.count,
+                        waitingCount: projection.waitingRows.count,
+                        actionCount: projection.actionCount
                     )
 
-                    if !movedRows.isEmpty {
+                    if !projection.movedRows.isEmpty {
                         ProjectReviewSectionTitle("Moved Projects")
-                        ProjectReviewRowList(model: model, rows: movedRows, rowKind: .moved)
+                        ProjectReviewRowList(model: model, rows: projection.movedRows, rowKind: .moved)
                     }
 
-                    if !waitingRows.isEmpty {
+                    if !projection.waitingRows.isEmpty {
                         ProjectReviewSectionTitle("Waiting Projects")
-                        ProjectReviewRowList(model: model, rows: waitingRows, rowKind: .waiting)
+                        ProjectReviewRowList(model: model, rows: projection.waitingRows, rowKind: .waiting)
                     }
                 }
             }
@@ -132,6 +119,19 @@ struct AttentionProjectReviewWorkspace: View {
             .padding(.top, 28)
             .padding(.bottom, 40)
         }
+        .onAppear(perform: rebuildProjection)
+        .onChange(of: model.reviewRevision) { _ in
+            rebuildProjection()
+        }
+        .onChange(of: range) { _ in
+            rebuildProjection()
+        }
+    }
+
+    private func rebuildProjection() {
+        projection = ProjectReviewProjection(
+            rows: projectReviewRows(repos: repos, actions: actions, actionRefs: actionRefs, issues: issues, range: range)
+        )
     }
 }
 
@@ -140,9 +140,28 @@ private enum ProjectReviewRowKind {
     case waiting
 }
 
+private struct ProjectReviewProjection {
+    let rows: [ProjectReviewRowData]
+
+    static let empty = ProjectReviewProjection(rows: [])
+
+    var movedRows: [ProjectReviewRowData] {
+        rows.filter(\.hasMovement)
+    }
+
+    var waitingRows: [ProjectReviewRowData] {
+        rows.filter { !$0.hasMovement && $0.hasOpenWork }
+    }
+
+    var actionCount: Int {
+        movedRows.reduce(0) { $0 + $1.actionCount }
+    }
+}
+
 private struct ProjectReviewRowData: Identifiable {
     let repo: LocalRepoSnapshot
     let linkedWork: [ProjectReviewWorkItem]
+    let unlinkedActionGroups: [ProjectReviewActionRefGroup]
     let unlinkedActions: [ActionSnapshot]
     let waitingIssues: [MatterSnapshot]
 
@@ -153,7 +172,7 @@ private struct ProjectReviewRowData: Identifiable {
     }
 
     var allActions: [ActionSnapshot] {
-        (linkedWork.flatMap(\.actions) + unlinkedActions)
+        (linkedWork.flatMap(\.actions) + unlinkedActionGroups.flatMap(\.actions) + unlinkedActions)
             .sorted { $0.happenedAt > $1.happenedAt }
     }
 
@@ -175,10 +194,27 @@ private struct ProjectReviewRowData: Identifiable {
 }
 
 private struct ProjectReviewWorkItem: Identifiable {
+    let key: String
     let issue: MatterSnapshot
+    let issues: [MatterSnapshot]
     let actions: [ActionSnapshot]
 
-    var id: String { issue.id }
+    var id: String { key }
+}
+
+private struct ProjectReviewActionRefGroup: Identifiable {
+    let key: String
+    let displayRef: ActionRefSnapshot
+    let actions: [ActionSnapshot]
+
+    var id: String { key }
+}
+
+private struct ProjectReviewIssueGroup {
+    let key: String
+    let displayIssue: MatterSnapshot
+    let issues: [MatterSnapshot]
+    let referenceTokens: [String]
 }
 
 private struct ProjectReviewSummaryLine: View {
@@ -341,29 +377,42 @@ private struct ProjectReviewMeta: View {
 private struct ProjectReviewWorkSections: View {
     @ObservedObject var model: DashboardModel
     let row: ProjectReviewRowData
+    @State private var visibleLinkedWorkCount = 3
+    @State private var visibleUnlinkedBucketCount = 3
+    @State private var visibleWaitingIssueCount = 3
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !row.linkedWork.isEmpty {
                 ProjectReviewGroupLabel("Linked work")
                 VStack(alignment: .leading, spacing: 5) {
-                    ForEach(Array(row.linkedWork.prefix(3))) { work in
+                    ForEach(visibleLinkedWork) { work in
                         ProjectReviewWorkItemLine(model: model, work: work)
                     }
-                    if row.linkedWork.count > 3 {
-                        ProjectReviewMoreLine(count: row.linkedWork.count - 3, noun: "more work items")
+                    if row.linkedWork.count > visibleLinkedWorkCount {
+                        ProjectReviewMoreButton(
+                            count: min(10, row.linkedWork.count - visibleLinkedWorkCount),
+                            noun: "more work items"
+                        ) {
+                            visibleLinkedWorkCount = min(visibleLinkedWorkCount + 10, row.linkedWork.count)
+                        }
                     }
                 }
             }
 
-            if !row.unlinkedActions.isEmpty {
+            if !unlinkedBuckets.isEmpty {
                 ProjectReviewGroupLabel("Unlinked actions")
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(row.unlinkedActions.prefix(3)), id: \.id) { action in
-                        ProjectReviewActionLine(action: action)
+                    ForEach(visibleUnlinkedBuckets) { bucket in
+                        ProjectReviewActionBucketLine(bucket: bucket)
                     }
-                    if row.unlinkedActions.count > 3 {
-                        ProjectReviewMoreLine(count: row.unlinkedActions.count - 3, noun: "more actions")
+                    if unlinkedBuckets.count > visibleUnlinkedBucketCount {
+                        ProjectReviewMoreButton(
+                            count: min(10, unlinkedBuckets.count - visibleUnlinkedBucketCount),
+                            noun: "more buckets"
+                        ) {
+                            visibleUnlinkedBucketCount = min(visibleUnlinkedBucketCount + 10, unlinkedBuckets.count)
+                        }
                     }
                 }
             }
@@ -371,15 +420,97 @@ private struct ProjectReviewWorkSections: View {
             if !row.waitingIssues.isEmpty {
                 ProjectReviewGroupLabel("Waiting issues")
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(row.waitingIssues.prefix(3)), id: \.id) { issue in
+                    ForEach(visibleWaitingIssues, id: \.id) { issue in
                         ProjectReviewIssueLine(model: model, issue: issue)
                     }
-                    if row.waitingIssues.count > 3 {
-                        ProjectReviewMoreLine(count: row.waitingIssues.count - 3, noun: "more issues")
+                    if row.waitingIssues.count > visibleWaitingIssueCount {
+                        ProjectReviewMoreButton(
+                            count: min(10, row.waitingIssues.count - visibleWaitingIssueCount),
+                            noun: "more issues"
+                        ) {
+                            visibleWaitingIssueCount = min(visibleWaitingIssueCount + 10, row.waitingIssues.count)
+                        }
                     }
                 }
             }
         }
+    }
+
+    private var visibleLinkedWork: [ProjectReviewWorkItem] {
+        Array(row.linkedWork.prefix(visibleLinkedWorkCount))
+    }
+
+    private var unlinkedBuckets: [ProjectReviewActionBucket] {
+        let groupedBuckets = row.unlinkedActionGroups.map { group in
+            ProjectReviewActionBucket(
+                key: group.id,
+                kindLabel: bucketKindLabel(for: group.displayRef.refKind),
+                title: bucketTitle(for: group.displayRef),
+                actions: group.actions,
+                sortDate: group.actions.first?.happenedAt ?? group.displayRef.createdAt
+            )
+        }
+        let directBucket: ProjectReviewActionBucket? = row.unlinkedActions.isEmpty ? nil : ProjectReviewActionBucket(
+            key: "direct",
+            kindLabel: "direct",
+            title: "Direct actions",
+            actions: row.unlinkedActions,
+            sortDate: row.unlinkedActions.first?.happenedAt ?? row.repo.project.updatedAt
+        )
+
+        let allBuckets = groupedBuckets + (directBucket.map { [$0] } ?? [])
+        return allBuckets
+            .sorted { left, right in
+                if left.sortDate != right.sortDate {
+                    return left.sortDate > right.sortDate
+                }
+                if left.kindLabel != right.kindLabel {
+                    return left.kindLabel < right.kindLabel
+                }
+                return left.title.localizedCaseInsensitiveCompare(right.title) == .orderedAscending
+            }
+    }
+
+    private var visibleUnlinkedBuckets: [ProjectReviewActionBucket] {
+        Array(unlinkedBuckets.prefix(visibleUnlinkedBucketCount))
+    }
+
+    private var visibleWaitingIssues: [MatterSnapshot] {
+        Array(row.waitingIssues.prefix(visibleWaitingIssueCount))
+    }
+
+    private func bucketKindLabel(for refKind: String) -> String {
+        switch refKind {
+        case "github_pr":
+            return "pr"
+        case "github_issue":
+            return "gh"
+        case "branch":
+            return "branch"
+        case "direct":
+            return "direct"
+        default:
+            return refKind
+        }
+    }
+
+    private func bucketTitle(for ref: ActionRefSnapshot) -> String {
+        switch ref.refKind {
+        case "github_pr", "github_issue":
+            if let title = normalized(ref.refTitle), title != ref.refKey {
+                return "\(ref.refKey) · \(title)"
+            }
+            return ref.refKey
+        default:
+            return normalized(ref.refTitle) ?? ref.refKey
+        }
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 }
 
@@ -401,13 +532,34 @@ private struct ProjectReviewGroupLabel: View {
 private struct ProjectReviewWorkItemLine: View {
     @ObservedObject var model: DashboardModel
     let work: ProjectReviewWorkItem
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ProjectReviewIssueLine(model: model, issue: work.issue, trailingText: actionCountText)
-            if let latestAction = work.actions.first {
-                ProjectReviewActionLine(action: latestAction, isSubtle: true)
-                    .padding(.leading, 16)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(DTColor.dimmed)
+                        .frame(width: 14, height: 14)
+                }
+                .buttonStyle(.plain)
+                .help(isExpanded ? "Hide details" : "Show details")
+
+                ProjectReviewIssueLine(model: model, issue: work.issue, trailingText: actionCountText)
+            }
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(orderedActions, id: \.id) { action in
+                        ProjectReviewActionLine(action: action, isSubtle: true)
+                            .padding(.leading, 20)
+                    }
+                }
             }
         }
     }
@@ -418,6 +570,10 @@ private struct ProjectReviewWorkItemLine: View {
         }
         let noun = work.actions.count == 1 ? "action" : "actions"
         return "\(work.actions.count) \(noun)"
+    }
+
+    private var orderedActions: [ActionSnapshot] {
+        work.actions.sorted { $0.happenedAt > $1.happenedAt }
     }
 }
 
@@ -486,21 +642,93 @@ private struct ProjectReviewActionLine: View {
     }
 }
 
-private struct ProjectReviewMoreLine: View {
-    let count: Int
-    let noun: String
+private struct ProjectReviewActionBucketLine: View {
+    let bucket: ProjectReviewActionBucket
+    @State private var isExpanded = false
 
     var body: some View {
-        Text("+ \(count) \(noun)")
-            .font(.system(size: 11, weight: .regular, design: .default))
-            .foregroundStyle(DTColor.dimmed)
-            .padding(.leading, 60)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(DTColor.dimmed)
+                        .frame(width: 14, height: 14)
+                }
+                .buttonStyle(.plain)
+                .help(isExpanded ? "Hide details" : "Show details")
+
+                Text(bucket.kindLabel)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(DTColor.dimmed)
+                    .frame(width: 48, alignment: .leading)
+                Text(bucket.title)
+                    .font(.system(size: 13, weight: .regular, design: .default))
+                    .foregroundStyle(DTColor.text.opacity(0.72))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(actionCountText)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(DTColor.dimmed)
+                    .lineLimit(1)
+            }
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(orderedActions, id: \.id) { action in
+                        ProjectReviewActionLine(action: action, isSubtle: true)
+                            .padding(.leading, 20)
+                    }
+                }
+            }
+        }
     }
+
+    private var actionCountText: String {
+        let count = bucket.actions.count
+        let noun = count == 1 ? "action" : "actions"
+        return "\(count) \(noun)"
+    }
+
+    private var orderedActions: [ActionSnapshot] {
+        bucket.actions.sorted { $0.happenedAt > $1.happenedAt }
+    }
+}
+
+private struct ProjectReviewMoreButton: View {
+    let count: Int
+    let noun: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("+ \(count) \(noun)")
+                .font(.system(size: 11, weight: .regular, design: .default))
+                .foregroundStyle(DTColor.dimmed)
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, 60)
+    }
+}
+
+private struct ProjectReviewActionBucket: Identifiable {
+    let key: String
+    let kindLabel: String
+    let title: String
+    let actions: [ActionSnapshot]
+    let sortDate: String
+
+    var id: String { key }
 }
 
 private func projectReviewRows(
     repos: [LocalRepoSnapshot],
     actions: [ActionSnapshot],
+    actionRefs: [ActionRefSnapshot],
     issues: [MatterSnapshot],
     range: ProjectReviewRange
 ) -> [ProjectReviewRowData] {
@@ -516,12 +744,17 @@ private func projectReviewRows(
     ).mapValues { issues in
         issues.sorted { $0.updatedAt > $1.updatedAt }
     }
+    let refsByProject = Dictionary(
+        grouping: actionRefs,
+        by: \.projectId
+    )
 
     return repos
         .map { repo in
             projectReviewRow(
                 repo: repo,
                 actions: actionsByProject[repo.project.id] ?? [],
+                actionRefs: refsByProject[repo.project.id] ?? [],
                 issues: issuesByProject[repo.project.id] ?? []
             )
         }
@@ -546,31 +779,49 @@ private func projectReviewRows(
 private func projectReviewRow(
     repo: LocalRepoSnapshot,
     actions: [ActionSnapshot],
+    actionRefs: [ActionRefSnapshot],
     issues: [MatterSnapshot]
 ) -> ProjectReviewRowData {
     var linkedActionIDs = Set<String>()
     var linkedWork: [ProjectReviewWorkItem] = []
+    let refsByActionID = Dictionary(grouping: actionRefs, by: \.actionId)
+    let issueGroups = projectReviewIssueGroups(issues)
 
-    for issue in issues {
+    for group in issueGroups {
         let linkedActions = actions
             .filter { action in
-                actionReferencesIssue(action, issue: issue)
+                actionReferencesIssueGroup(
+                    action,
+                    refs: refsByActionID[action.id] ?? [],
+                    issueGroup: group
+                )
             }
             .sorted { $0.happenedAt > $1.happenedAt }
 
-        if issue.issueKind == "github_pr" || !linkedActions.isEmpty {
-            linkedWork.append(ProjectReviewWorkItem(issue: issue, actions: linkedActions))
+        if group.displayIssue.issueKind == "github_pr" || !linkedActions.isEmpty {
+            linkedWork.append(ProjectReviewWorkItem(
+                key: group.key,
+                issue: group.displayIssue,
+                issues: group.issues,
+                actions: linkedActions
+            ))
             linkedActionIDs.formUnion(linkedActions.map(\.id))
         }
     }
 
-    let linkedIssueIDs = Set(linkedWork.map(\.issue.id))
-    let unlinkedActions = actions.filter { !linkedActionIDs.contains($0.id) }
-    let waitingIssues = issues.filter { !linkedIssueIDs.contains($0.id) }
+    let linkedIssueIDs = Set(linkedWork.map(\.key))
+    let unlinkedCandidates = actions.filter { !linkedActionIDs.contains($0.id) }
+    let unlinkedActionGroups = groupUnlinkedActions(unlinkedCandidates, refsByActionID: refsByActionID)
+    let groupedActionIDs = Set(unlinkedActionGroups.flatMap(\.actions).map(\.id))
+    let unlinkedActions = unlinkedCandidates.filter { !groupedActionIDs.contains($0.id) }
+    let waitingIssues = issueGroups
+        .filter { !linkedIssueIDs.contains($0.key) }
+        .map(\.displayIssue)
 
     return ProjectReviewRowData(
         repo: repo,
         linkedWork: sortReviewWork(linkedWork),
+        unlinkedActionGroups: unlinkedActionGroups,
         unlinkedActions: unlinkedActions,
         waitingIssues: waitingIssues
     )
@@ -595,6 +846,103 @@ private func sortReviewWork(_ workItems: [ProjectReviewWorkItem]) -> [ProjectRev
     }
 }
 
+private func projectReviewIssueGroups(_ issues: [MatterSnapshot]) -> [ProjectReviewIssueGroup] {
+    let grouped = Dictionary(grouping: issues, by: reviewIssueGroupKey)
+
+    return grouped.compactMap { key, groupIssues in
+        guard let displayIssue = preferredDisplayIssue(in: groupIssues) else {
+            return nil
+        }
+
+        let tokens = Array(Set(groupIssues.flatMap(issueReferenceTokens)))
+        return ProjectReviewIssueGroup(
+            key: key,
+            displayIssue: displayIssue,
+            issues: groupIssues.sorted { $0.updatedAt > $1.updatedAt },
+            referenceTokens: tokens
+        )
+    }
+    .sorted { left, right in
+        let leftDate = left.displayIssue.updatedAt
+        let rightDate = right.displayIssue.updatedAt
+        if leftDate != rightDate {
+            return leftDate > rightDate
+        }
+        let leftRank = reviewIssueKindRank(left.displayIssue)
+        let rightRank = reviewIssueKindRank(right.displayIssue)
+        if leftRank != rightRank {
+            return leftRank < rightRank
+        }
+        return left.displayIssue.text.localizedCaseInsensitiveCompare(right.displayIssue.text) == .orderedAscending
+    }
+}
+
+private func reviewIssueGroupKey(_ issue: MatterSnapshot) -> String {
+    if let token = githubReferenceToken(issue.externalId, externalUrl: issue.externalUrl) {
+        return canonicalReviewRefKey(kind: issue.issueKind ?? "manual", key: token)
+    }
+    return "matter:\(issue.id)"
+}
+
+private func githubReferenceToken(_ externalId: String?, externalUrl: String?) -> String? {
+    if let externalId = externalId?.trimmingCharacters(in: .whitespacesAndNewlines), !externalId.isEmpty {
+        return normalizedGitHubReference(externalId)
+    }
+
+    if let externalUrl,
+       let number = externalUrl
+           .split(separator: "/")
+           .last
+           .flatMap({ Int($0) }) {
+        return "#\(number)"
+    }
+
+    return nil
+}
+
+private func normalizedGitHubReference(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.hasPrefix("#") {
+        return trimmed.lowercased()
+    }
+    return "#\(trimmed)".lowercased()
+}
+
+private func canonicalReviewRefKey(kind: String, key: String) -> String {
+    let normalizedKind = kind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let normalizedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    switch normalizedKind {
+    case "github_pr", "github_issue":
+        return "github:\(normalizedGitHubReference(normalizedKey))"
+    default:
+        return "\(normalizedKind):\(normalizedKey.lowercased())"
+    }
+}
+
+private func preferredDisplayIssue(in issues: [MatterSnapshot]) -> MatterSnapshot? {
+    issues.sorted { left, right in
+        let leftRank = reviewIssueDisplayRank(left)
+        let rightRank = reviewIssueDisplayRank(right)
+        if leftRank != rightRank {
+            return leftRank < rightRank
+        }
+        if left.updatedAt != right.updatedAt {
+            return left.updatedAt > right.updatedAt
+        }
+        return left.text.localizedCaseInsensitiveCompare(right.text) == .orderedAscending
+    }
+    .first
+}
+
+private func reviewIssueDisplayRank(_ issue: MatterSnapshot) -> Int {
+    switch issue.issueKind {
+    case "github_pr": return 0
+    case "github_issue": return 1
+    default: return 2
+    }
+}
+
 private func reviewIssueKindRank(_ issue: MatterSnapshot) -> Int {
     switch issue.issueKind {
     case "github_pr": return 0
@@ -603,13 +951,83 @@ private func reviewIssueKindRank(_ issue: MatterSnapshot) -> Int {
     }
 }
 
-private func actionReferencesIssue(_ action: ActionSnapshot, issue: MatterSnapshot) -> Bool {
+private func actionReferencesIssueGroup(
+    _ action: ActionSnapshot,
+    refs: [ActionRefSnapshot],
+    issueGroup: ProjectReviewIssueGroup
+) -> Bool {
+    if refs.contains(where: { canonicalReviewRefKey(kind: $0.refKind, key: $0.refKey) == issueGroup.key }) {
+        return true
+    }
+
     guard let summary = action.summary, !summary.isEmpty else {
         return false
     }
 
-    return issueReferenceTokens(issue).contains { token in
+    return issueGroup.referenceTokens.contains { token in
         summary.range(of: token, options: [.caseInsensitive]) != nil
+    }
+}
+
+private func groupUnlinkedActions(
+    _ actions: [ActionSnapshot],
+    refsByActionID: [String: [ActionRefSnapshot]]
+) -> [ProjectReviewActionRefGroup] {
+    var actionsByGroupID: [String: [ActionSnapshot]] = [:]
+    var refsByGroupID: [String: [ActionRefSnapshot]] = [:]
+
+    for action in actions {
+        guard let ref = preferredReviewRef(refsByActionID[action.id] ?? []) else {
+            continue
+        }
+        let groupID = canonicalReviewRefKey(kind: ref.refKind, key: ref.refKey)
+        refsByGroupID[groupID, default: []].append(ref)
+        actionsByGroupID[groupID, default: []].append(action)
+    }
+
+    return actionsByGroupID.compactMap { groupID, actions in
+        guard let refs = refsByGroupID[groupID], let displayRef = preferredReviewRef(refs) else {
+            return nil
+        }
+        return ProjectReviewActionRefGroup(
+            key: groupID,
+            displayRef: displayRef,
+            actions: actions.sorted { $0.happenedAt > $1.happenedAt }
+        )
+    }
+    .sorted { left, right in
+        let leftDate = left.actions.first?.happenedAt ?? left.displayRef.createdAt
+        let rightDate = right.actions.first?.happenedAt ?? right.displayRef.createdAt
+        if leftDate != rightDate {
+            return leftDate > rightDate
+        }
+        let leftRank = reviewRefKindRank(left.displayRef.refKind)
+        let rightRank = reviewRefKindRank(right.displayRef.refKind)
+        if leftRank != rightRank {
+            return leftRank < rightRank
+        }
+        return left.displayRef.refKey.localizedCaseInsensitiveCompare(right.displayRef.refKey) == .orderedAscending
+    }
+}
+
+private func preferredReviewRef(_ refs: [ActionRefSnapshot]) -> ActionRefSnapshot? {
+    refs.sorted { left, right in
+        let leftRank = reviewRefKindRank(left.refKind)
+        let rightRank = reviewRefKindRank(right.refKind)
+        if leftRank != rightRank {
+            return leftRank < rightRank
+        }
+        return left.refKey.localizedCaseInsensitiveCompare(right.refKey) == .orderedAscending
+    }
+    .first
+}
+
+private func reviewRefKindRank(_ kind: String) -> Int {
+    switch kind {
+    case "github_pr": return 0
+    case "github_issue": return 1
+    case "branch": return 2
+    default: return 3
     }
 }
 

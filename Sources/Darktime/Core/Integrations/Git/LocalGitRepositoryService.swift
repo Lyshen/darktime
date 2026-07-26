@@ -4,6 +4,14 @@ struct LocalGitCommitAction: Sendable {
     let hash: String
     let date: String
     let summary: String
+    let contexts: [LocalGitActionContext]
+}
+
+struct LocalGitActionContext: Sendable, Hashable {
+    let kind: String
+    let key: String
+    let title: String?
+    let url: String?
 }
 
 struct LocalGitPullRequestIssue: Sendable {
@@ -107,18 +115,19 @@ enum LocalGitRepositoryService {
         }
     }
 
-    static func commitActions(at path: String, since: String = "1 year ago") throws -> [LocalGitCommitAction] {
+    static func commitActions(at path: String, repoSlug: String? = nil, since: String = "1 year ago") throws -> [LocalGitCommitAction] {
         let recent = try gitCommitActions(
             arguments: ["-C", path, "log", "--since=\(since)", "--max-count=800", "--format=%H%x1f%cI%x1f%s"]
         )
 
         if !recent.isEmpty {
-            return recent
+            return commitsWithContexts(recent, at: path, repoSlug: repoSlug)
         }
 
-        return try gitCommitActions(
+        let latest = try gitCommitActions(
             arguments: ["-C", path, "log", "-1", "--format=%H%x1f%cI%x1f%s"]
         )
+        return commitsWithContexts(latest, at: path, repoSlug: repoSlug)
     }
 
     static func githubRepositorySlug(at path: String) -> String? {
@@ -367,9 +376,143 @@ enum LocalGitRepositoryService {
                 return LocalGitCommitAction(
                     hash: String(parts[0]),
                     date: String(parts[1]),
-                    summary: parts.count > 2 ? String(parts[2]) : "Commit"
+                    summary: parts.count > 2 ? String(parts[2]) : "Commit",
+                    contexts: []
                 )
             }
+    }
+
+    private static func commitsWithContexts(
+        _ commits: [LocalGitCommitAction],
+        at path: String,
+        repoSlug: String?
+    ) -> [LocalGitCommitAction] {
+        let branch = currentBranch(at: path)
+        let branchContext = localBranchContext(branch)
+        let pullRequestContextsByHash = repoSlug.flatMap { recentPullRequestContextsByCommit(repoSlug: $0) } ?? [:]
+
+        return commits.map { commit in
+            var contexts: [LocalGitActionContext] = []
+
+            if let branchContext {
+                contexts.append(branchContext)
+            }
+            contexts.append(contentsOf: issueContexts(from: commit.summary))
+            contexts.append(contentsOf: pullRequestContextsByHash[commit.hash.lowercased()] ?? [])
+
+            return LocalGitCommitAction(
+                hash: commit.hash,
+                date: commit.date,
+                summary: commit.summary,
+                contexts: contexts
+            )
+        }
+    }
+
+    private static func localBranchContext(_ branch: String) -> LocalGitActionContext? {
+        let normalized = branch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty, normalized != "unknown", normalized != "unavailable" else {
+            return nil
+        }
+
+        return LocalGitActionContext(
+            kind: "branch",
+            key: normalized,
+            title: normalized,
+            url: nil
+        )
+    }
+
+    private static func issueContexts(from summary: String) -> [LocalGitActionContext] {
+        guard let regex = try? NSRegularExpression(pattern: #"(?:^|[^A-Za-z0-9_])#([0-9]+)(?:$|[^A-Za-z0-9_])"#) else {
+            return []
+        }
+
+        let range = NSRange(summary.startIndex..<summary.endIndex, in: summary)
+        return regex.matches(in: summary, range: range).compactMap { match in
+            guard
+                match.numberOfRanges >= 2,
+                let numberRange = Range(match.range(at: 1), in: summary)
+            else {
+                return nil
+            }
+            let key = "#\(summary[numberRange])"
+            return LocalGitActionContext(
+                kind: "github_issue",
+                key: key,
+                title: key,
+                url: nil
+            )
+        }
+    }
+
+    private static func recentPullRequestContextsByCommit(repoSlug: String) -> [String: [LocalGitActionContext]] {
+        guard let output = try? runTool(
+            executable: "/usr/bin/env",
+            arguments: [
+                "gh",
+                "pr",
+                "list",
+                "--repo",
+                repoSlug,
+                "--state",
+                "all",
+                "--limit",
+                "20",
+                "--json",
+                "number,title,url,state,headRefName,commits"
+            ],
+            allowFailure: true,
+            timeout: 12
+        ) else {
+            return [:]
+        }
+
+        struct GHCommit: Decodable {
+            let oid: String
+        }
+
+        struct GHPullRequest: Decodable {
+            let number: Int
+            let title: String
+            let url: String
+            let headRefName: String?
+            let commits: [GHCommit]
+        }
+
+        guard let pullRequests = try? JSONDecoder().decode([GHPullRequest].self, from: Data(output.utf8)) else {
+            return [:]
+        }
+
+        var contextsByHash: [String: [LocalGitActionContext]] = [:]
+        for pullRequest in pullRequests {
+            var contexts = [
+                LocalGitActionContext(
+                    kind: "github_pr",
+                    key: "#\(pullRequest.number)",
+                    title: pullRequest.title,
+                    url: pullRequest.url
+                )
+            ]
+
+            if let headRefName = pullRequest.headRefName?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !headRefName.isEmpty {
+                contexts.append(
+                    LocalGitActionContext(
+                        kind: "branch",
+                        key: headRefName,
+                        title: headRefName,
+                        url: nil
+                    )
+                )
+            }
+
+            for commit in pullRequest.commits {
+                contextsByHash[commit.oid.lowercased(), default: []].append(contentsOf: contexts)
+            }
+        }
+
+        return contextsByHash
     }
 
     private static func commitCount(at path: String, since: String) -> Int {

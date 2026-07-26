@@ -5,6 +5,7 @@ struct MatterRepositorySnapshot {
     let matters: [MatterSnapshot]
     let projects: [ProjectSnapshot]
     let actions: [ActionSnapshot]
+    let actionRefs: [ActionRefSnapshot]
 }
 
 enum MatterRepository {
@@ -35,7 +36,8 @@ enum MatterRepository {
             sessions: try LocalDatabase.recentSessions(limit: 12),
             matters: try LocalDatabase.recentMatters(limit: 180),
             projects: try LocalDatabase.recentProjects(limit: 80),
-            actions: try LocalDatabase.recentActions(limit: 5_000)
+            actions: try LocalDatabase.recentActions(limit: 5_000),
+            actionRefs: try LocalDatabase.recentActionRefs(limit: 20_000)
         )
     }
 
@@ -151,7 +153,8 @@ enum MatterRepository {
 
             do {
                 let repository = try LocalGitRepositoryService.resolveRepository(at: localPath)
-                return try LocalGitRepositoryService.commitActions(at: repository.rootPath)
+                let repoSlug = LocalGitRepositoryService.githubRepositorySlug(at: repository.rootPath)
+                return try LocalGitRepositoryService.commitActions(at: repository.rootPath, repoSlug: repoSlug)
                     .map { commit in
                         ActionUpsert(
                             projectId: project.id,
@@ -160,7 +163,15 @@ enum MatterRepository {
                             externalId: commit.hash,
                             happenedAt: commit.date,
                             summary: commit.summary,
-                            metadataJson: nil
+                            metadataJson: nil,
+                            refs: commit.contexts.map { context in
+                                ActionRefUpsert(
+                                    kind: context.kind,
+                                    key: context.key,
+                                    title: context.title,
+                                    url: context.url
+                                )
+                            }
                         )
                     }
             } catch {
