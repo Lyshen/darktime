@@ -49,6 +49,12 @@ Darktime 的 Issue 不等同于 GitHub Issue。它先是本地的工作意图，
 - 看哪些只是计划但没有推进。
 - 得到一段简短日报或观察摘要。
 
+周期 Review：
+
+- 在 Attention 里回看最近一段时间的 Project 行动分布。
+- 先看哪些 Project 有 Action，哪些 Project 有 Issue 但没有 Action。
+- Review 是解释已有行为数据的动作，不是新的数据库实体。
+
 ## GitHub Issue 关系
 
 GitHub Issue 是 Darktime Issue 的一个外部表达，不是唯一来源。
