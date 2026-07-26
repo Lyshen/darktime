@@ -19,6 +19,7 @@ Darktime 是一个本地优先的注意力操作台。它不先做日历、待�
 | Action | Issue 或 Project 上真实发生过的一次推进。 | 不是计划、提醒或待办；它必须已经发生。 |
 | Today | 当天的 focus issues、今日 actions 和结束记录。 | 不是完整日程表，也不是任务管理器。 |
 | Attention View | Issues、Projects、Actions 的 UI 聚合视图。 | 不是新的业务实体。 |
+| Review | 回看一段时间内 Project / Issue / Action 的动作。 | 不是新的业务实体；先作为 Attention 里的 mode。 |
 
 ## 流转关系
 
@@ -84,6 +85,7 @@ empty    -> 还没有 Action
 - commit 自动导入为 Action。
 - Today Focus 和 End Note。
 - Attention Items 和 Timeline。
+- Attention Project Review mode。
 
 暂不进入：
 

@@ -15,6 +15,7 @@ Darktime is a local-first attention workspace. It is not primarily a calendar, t
 | Action | One real movement that already happened on an Issue or Project. | Not a plan, reminder, or todo; it must have happened. |
 | Today | Today's focus issues, actions, and end note. | Not a full calendar or task manager. |
 | Attention View | A UI aggregation of Issues, Projects, and Actions. | Not a separate business entity. |
+| Review | The act of looking back at Project / Issue / Action over a time range. | Not a separate entity; starts as a mode inside Attention. |
 
 ## Flow
 
@@ -80,6 +81,7 @@ In:
 - Commits imported as Actions.
 - Today Focus and End Note.
 - Attention Items and Timeline.
+- Attention Project Review mode.
 
 Out:
 

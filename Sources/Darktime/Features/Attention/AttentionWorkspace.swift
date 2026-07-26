@@ -10,6 +10,7 @@ struct AttentionWorkspace: View {
     @State private var mode: AttentionMode = .items
     @State private var lens: AttentionLens = .current
     @State private var timelineRange: AttentionTimelineRange = .thirtyDays
+    @State private var reviewRange: ProjectReviewRange = .sevenDays
 
     private var visibleRepos: [LocalRepoSnapshot] {
         model.localRepoSnapshots.filter { lens.includes(repo: $0) }
@@ -34,7 +35,8 @@ struct AttentionWorkspace: View {
                 model: model,
                 mode: $mode,
                 lens: $lens,
-                timelineRange: $timelineRange
+                timelineRange: $timelineRange,
+                reviewRange: $reviewRange
             )
             Divider().overlay(DTColor.line.opacity(0.7))
 
@@ -53,6 +55,14 @@ struct AttentionWorkspace: View {
                     repos: model.localRepoSnapshots,
                     actions: model.actions,
                     range: timelineRange
+                )
+            case .review:
+                AttentionProjectReviewWorkspace(
+                    model: model,
+                    repos: model.localRepoSnapshots,
+                    actions: model.actions,
+                    issues: model.projectIssueMatters,
+                    range: reviewRange
                 )
             }
         }
@@ -173,6 +183,7 @@ private struct AttentionTopBar: View {
     @Binding var mode: AttentionMode
     @Binding var lens: AttentionLens
     @Binding var timelineRange: AttentionTimelineRange
+    @Binding var reviewRange: ProjectReviewRange
 
     var body: some View {
         HStack(spacing: 9) {
@@ -188,8 +199,10 @@ private struct AttentionTopBar: View {
             AttentionModeSwitch(selection: $mode)
             if mode == .items {
                 AttentionLensMenu(selection: $lens)
-            } else {
+            } else if mode == .timeline {
                 AttentionTimelineRangePicker(selection: $timelineRange)
+            } else {
+                ProjectReviewRangePicker(selection: $reviewRange)
             }
             QuietHeaderButton("Add Repo") {
                 model.addLocalRepoProject()
@@ -284,6 +297,7 @@ private struct ProjectActionSyncStatus: View {
 private enum AttentionMode: String, CaseIterable, Identifiable {
     case items = "Items"
     case timeline = "Timeline"
+    case review = "Review"
 
     var id: String { rawValue }
 }
