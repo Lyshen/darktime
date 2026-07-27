@@ -347,7 +347,7 @@ private struct ProjectReviewWorkSections: View {
                 ProjectReviewGroupLabel("Waiting issues")
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(visibleWaitingIssues, id: \.id) { issue in
-                        ProjectReviewIssueLine(model: model, issue: issue)
+                        ProjectReviewStaticIssueLine(model: model, issue: issue)
                     }
                     if row.waitingIssues.count > visibleWaitingIssueCount {
                         ProjectReviewMoreButton(
@@ -398,23 +398,24 @@ private struct ProjectReviewWorkItemLine: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        isExpanded.toggle()
+                if hasActionDetails {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        ProjectReviewDisclosureIcon(isExpanded: isExpanded)
                     }
-                } label: {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(DTColor.dimmed)
-                        .frame(width: 14, height: 14)
+                    .buttonStyle(.plain)
+                    .help(isExpanded ? "Hide details" : "Show details")
+                } else {
+                    ProjectReviewDisclosurePlaceholder()
                 }
-                .buttonStyle(.plain)
-                .help(isExpanded ? "Hide details" : "Show details")
 
-                ProjectReviewIssueLine(model: model, issue: work.issue, trailingText: actionCountText)
+                ProjectReviewIssueLine(model: model, issue: work.issue, trailingActionCount: actionCount)
             }
 
-            if isExpanded {
+            if isExpanded && hasActionDetails {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(orderedActions, id: \.id) { action in
                         ProjectReviewActionLine(action: action, isSubtle: true)
@@ -425,12 +426,15 @@ private struct ProjectReviewWorkItemLine: View {
         }
     }
 
-    private var actionCountText: String? {
+    private var hasActionDetails: Bool {
+        !work.actions.isEmpty
+    }
+
+    private var actionCount: Int? {
         guard !work.actions.isEmpty else {
             return nil
         }
-        let noun = work.actions.count == 1 ? "action" : "actions"
-        return "\(work.actions.count) \(noun)"
+        return work.actions.count
     }
 
     private var orderedActions: [ActionSnapshot] {
@@ -438,10 +442,22 @@ private struct ProjectReviewWorkItemLine: View {
     }
 }
 
+private struct ProjectReviewStaticIssueLine: View {
+    @ObservedObject var model: DashboardModel
+    let issue: MatterSnapshot
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            ProjectReviewDisclosurePlaceholder()
+            ProjectReviewIssueLine(model: model, issue: issue)
+        }
+    }
+}
+
 private struct ProjectReviewIssueLine: View {
     @ObservedObject var model: DashboardModel
     let issue: MatterSnapshot
-    var trailingText: String? = nil
+    var trailingActionCount: Int? = nil
 
     var body: some View {
         if issue.externalUrl != nil {
@@ -467,11 +483,8 @@ private struct ProjectReviewIssueLine: View {
                 .foregroundStyle(DTColor.text.opacity(0.72))
                 .lineLimit(1)
             Spacer(minLength: 8)
-            if let trailingText {
-                Text(trailingText)
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundStyle(DTColor.dimmed)
-                    .lineLimit(1)
+            if let trailingActionCount {
+                ProjectReviewActionCountLabel(count: trailingActionCount)
             }
         }
     }
@@ -482,6 +495,41 @@ private struct ProjectReviewIssueLine: View {
         case "github_issue": return "gh"
         default: return "issue"
         }
+    }
+}
+
+private struct ProjectReviewDisclosureIcon: View {
+    let isExpanded: Bool
+
+    var body: some View {
+        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(DTColor.dimmed)
+            .frame(width: 14, height: 14)
+    }
+}
+
+private struct ProjectReviewDisclosurePlaceholder: View {
+    var body: some View {
+        Color.clear
+            .frame(width: 14, height: 14)
+    }
+}
+
+private struct ProjectReviewActionCountLabel: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("\(count)")
+                .frame(width: 24, alignment: .trailing)
+            Text(" ")
+            Text(count == 1 ? "action" : "actions")
+                .frame(width: 48, alignment: .leading)
+        }
+        .font(.system(size: 11, weight: .regular, design: .monospaced))
+        .foregroundStyle(DTColor.dimmed)
+        .lineLimit(1)
     }
 }
 
@@ -530,10 +578,7 @@ private struct ProjectReviewActionBucketLine: View {
                         isExpanded.toggle()
                     }
                 } label: {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(DTColor.dimmed)
-                        .frame(width: 14, height: 14)
+                    ProjectReviewDisclosureIcon(isExpanded: isExpanded)
                 }
                 .buttonStyle(.plain)
                 .help(isExpanded ? "Hide details" : "Show details")
@@ -547,10 +592,7 @@ private struct ProjectReviewActionBucketLine: View {
                     .foregroundStyle(DTColor.text.opacity(0.72))
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                Text(actionCountText)
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundStyle(DTColor.dimmed)
-                    .lineLimit(1)
+                ProjectReviewActionCountLabel(count: bucket.actions.count)
             }
 
             if isExpanded {
@@ -562,12 +604,6 @@ private struct ProjectReviewActionBucketLine: View {
                 }
             }
         }
-    }
-
-    private var actionCountText: String {
-        let count = bucket.actions.count
-        let noun = count == 1 ? "action" : "actions"
-        return "\(count) \(noun)"
     }
 
     private var orderedActions: [ActionSnapshot] {
