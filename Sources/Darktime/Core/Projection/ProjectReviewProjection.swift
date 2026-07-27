@@ -216,11 +216,12 @@ private func projectReviewActionBuckets(
         actionsByGroupID[groupID, default: []].append(action)
     }
 
-    if !actions.isEmpty {
+    let directActions = actions.filter { action in
+        preferredReviewRef(refsByActionID[action.id] ?? []) == nil
+    }
+    if !directActions.isEmpty {
         let directGroupID = "direct:\(fallbackTitle.lowercased())"
-        actionsByGroupID[directGroupID, default: []].append(contentsOf: actions.filter { action in
-            preferredReviewRef(refsByActionID[action.id] ?? []) == nil
-        })
+        actionsByGroupID[directGroupID, default: []].append(contentsOf: directActions)
     }
 
     let groupedBuckets = actionsByGroupID.compactMap { groupID, groupedActions -> ProjectReviewActionBucket? in
