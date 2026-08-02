@@ -294,6 +294,23 @@ final class DashboardModel: ObservableObject {
     }
 
     @discardableResult
+    func createIssueForToday(text: String) -> Bool {
+        do {
+            let matter = try MatterRepository.capture(text: text, source: "today")
+            let issue = try MatterRepository.moveMatter(matter, to: "issue")
+            dailyFocusIssueIDs.insert(issue.id)
+            saveDailyFocus()
+            selectedSection = .today
+            refresh()
+            return true
+        } catch {
+            storageReady = false
+            storageError = String(describing: error)
+            return false
+        }
+    }
+
+    @discardableResult
     func publishIssueToGitHub(_ issue: MatterSnapshot) -> Bool {
         guard let project = project(for: issue) else {
             storageError = "Issue must belong to a project before publishing."
