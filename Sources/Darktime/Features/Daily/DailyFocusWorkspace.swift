@@ -7,7 +7,7 @@ import SwiftUI
 
 struct DailyFocusWorkspace: View {
     @ObservedObject var model: DashboardModel
-    @State private var isAddingIssue = false
+    @State private var activeSheet: DailyFocusSheet?
 
     private var openProjectIssues: [MatterSnapshot] {
         model.projectIssueMatters
@@ -16,7 +16,8 @@ struct DailyFocusWorkspace: View {
     }
 
     private var focusIssues: [MatterSnapshot] {
-        openProjectIssues
+        model.todayFocusIssues
+            .filter { $0.externalState?.lowercased() != "closed" }
             .filter { model.isDailyFocus($0) }
             .sorted { $0.updatedAt > $1.updatedAt }
     }
@@ -49,8 +50,8 @@ struct DailyFocusWorkspace: View {
                 focusCount: focusIssues.count,
                 actionCount: todayActions.count,
                 canClear: !focusIssues.isEmpty,
-                onAdd: {
-                    isAddingIssue = true
+                onStart: {
+                    activeSheet = .startToday
                 },
                 onClear: model.clearDailyFocus
             )
@@ -63,7 +64,7 @@ struct DailyFocusWorkspace: View {
                         DailyEmptyLine(
                             systemImage: "circle.dotted",
                             title: "No issues selected",
-                            detail: "Add a few project issues for today."
+                            detail: "Start today with a few things on your mind."
                         )
                     } else {
                         VStack(spacing: 0) {
@@ -105,10 +106,27 @@ struct DailyFocusWorkspace: View {
             }
         }
         .background(DTColor.workspace)
-        .sheet(isPresented: $isAddingIssue) {
-            DailyIssuePickerSheet(model: model, issues: addableIssues)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .startToday:
+                DailyStartTodaySheet(
+                    model: model,
+                    onPickExisting: {
+                        activeSheet = .addIssue
+                    }
+                )
+            case .addIssue:
+                DailyIssuePickerSheet(model: model, issues: addableIssues)
+            }
         }
     }
+}
+
+private enum DailyFocusSheet: String, Identifiable {
+    case startToday
+    case addIssue
+
+    var id: String { rawValue }
 }
 
 private struct DailyActionProjectSection: Identifiable {
@@ -127,7 +145,7 @@ private struct DailyFocusHeader: View {
     let focusCount: Int
     let actionCount: Int
     let canClear: Bool
-    let onAdd: () -> Void
+    let onStart: () -> Void
     let onClear: () -> Void
 
     var body: some View {
@@ -144,8 +162,8 @@ private struct DailyFocusHeader: View {
                 .foregroundStyle(DTColor.muted)
                 .lineLimit(1)
             Spacer()
-            QuietHeaderButton("Add Issue") {
-                onAdd()
+            QuietHeaderButton("Start Today") {
+                onStart()
             }
             QuietHeaderButton("Clear Focus", isEnabled: canClear) {
                 onClear()
